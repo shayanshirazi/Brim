@@ -7,12 +7,21 @@ public final class QuotaStore: ObservableObject {
 
     private static let accountsKey = "halo.accounts.v1"
     private static let selectedAccountIDKey = "halo.selected-account-id.v1"
+    private static let isAccountTextHiddenKey = "halo.account-text-hidden.v1"
+    private static let widgetPageIndexKey = "halo.widget-page-index.v1"
     private let defaults: UserDefaults
+    public let isUsingSharedDefaults: Bool
 
     @Published public private(set) var accounts: [QuotaAccount]
 
     public init() {
-        defaults = UserDefaults(suiteName: Self.appGroupID) ?? .standard
+        if let sharedDefaults = UserDefaults(suiteName: Self.appGroupID) {
+            defaults = sharedDefaults
+            isUsingSharedDefaults = true
+        } else {
+            defaults = .standard
+            isUsingSharedDefaults = false
+        }
         accounts = Self.loadAccounts(from: defaults)
     }
 
@@ -77,6 +86,43 @@ public final class QuotaStore: ObservableObject {
             defaults.removeObject(forKey: selectedAccountIDKey)
         }
         WidgetCenter.shared.reloadAllTimelines()
+    }
+
+    public static func isAccountTextHidden() -> Bool {
+        let defaults = UserDefaults(suiteName: appGroupID) ?? .standard
+        return defaults.bool(forKey: isAccountTextHiddenKey)
+    }
+
+    public static func setAccountTextHidden(_ isHidden: Bool) {
+        let defaults = UserDefaults(suiteName: appGroupID) ?? .standard
+        defaults.set(isHidden, forKey: isAccountTextHiddenKey)
+        WidgetCenter.shared.reloadAllTimelines()
+    }
+
+    public static func toggleAccountTextHidden() {
+        setAccountTextHidden(!isAccountTextHidden())
+    }
+
+    public static func widgetPageIndex() -> Int {
+        let defaults = UserDefaults(suiteName: appGroupID) ?? .standard
+        return max(0, defaults.integer(forKey: widgetPageIndexKey))
+    }
+
+    public static func setWidgetPageIndex(_ pageIndex: Int) {
+        let defaults = UserDefaults(suiteName: appGroupID) ?? .standard
+        defaults.set(max(0, pageIndex), forKey: widgetPageIndexKey)
+        WidgetCenter.shared.reloadAllTimelines()
+    }
+
+    public static func moveWidgetPage(by offset: Int, accountCount: Int, pageSize: Int) {
+        guard accountCount > pageSize, pageSize > 0 else {
+            setWidgetPageIndex(0)
+            return
+        }
+
+        let maxPageIndex = max(0, Int(ceil(Double(accountCount) / Double(pageSize))) - 1)
+        let nextPageIndex = min(max(0, widgetPageIndex() + offset), maxPageIndex)
+        setWidgetPageIndex(nextPageIndex)
     }
 
     private func persist() {

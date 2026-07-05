@@ -6,6 +6,8 @@ struct QuotaEntry: TimelineEntry {
     let date: Date
     let accounts: [QuotaAccount]
     let selectedAccountID: QuotaAccount.ID?
+    let isAccountTextHidden: Bool
+    let pageIndex: Int
 }
 
 struct QuotaProvider: TimelineProvider {
@@ -13,7 +15,9 @@ struct QuotaProvider: TimelineProvider {
         QuotaEntry(
             date: Date(),
             accounts: QuotaAccount.examples,
-            selectedAccountID: QuotaAccount.examples.first?.id
+            selectedAccountID: QuotaAccount.examples.first?.id,
+            isAccountTextHidden: false,
+            pageIndex: 0
         )
     }
 
@@ -32,7 +36,9 @@ struct QuotaProvider: TimelineProvider {
         return QuotaEntry(
             date: Date(),
             accounts: accounts,
-            selectedAccountID: QuotaStore.selectedAccountID() ?? accounts.first?.id
+            selectedAccountID: QuotaStore.selectedAccountID() ?? accounts.first?.id,
+            isAccountTextHidden: QuotaStore.isAccountTextHidden(),
+            pageIndex: QuotaStore.widgetPageIndex()
         )
     }
 }
@@ -59,6 +65,47 @@ struct SelectQuotaAccountIntent: AppIntent {
     }
 }
 
+struct ToggleAccountTextVisibilityIntent: AppIntent {
+    static var title: LocalizedStringResource = "Toggle account text visibility"
+
+    init() {}
+
+    func perform() async throws -> some IntentResult {
+        QuotaStore.toggleAccountTextHidden()
+        return .result()
+    }
+}
+
+struct MoveWidgetPageIntent: AppIntent {
+    static var title: LocalizedStringResource = "Move widget page"
+
+    @Parameter(title: "Offset")
+    var offset: Int
+
+    @Parameter(title: "Account count")
+    var accountCount: Int
+
+    @Parameter(title: "Page size")
+    var pageSize: Int
+
+    init() {
+        offset = 0
+        accountCount = 0
+        pageSize = 1
+    }
+
+    init(offset: Int, accountCount: Int, pageSize: Int) {
+        self.offset = offset
+        self.accountCount = accountCount
+        self.pageSize = pageSize
+    }
+
+    func perform() async throws -> some IntentResult {
+        QuotaStore.moveWidgetPage(by: offset, accountCount: accountCount, pageSize: pageSize)
+        return .result()
+    }
+}
+
 struct HaloWidgetView: View {
     @Environment(\.widgetFamily) private var widgetFamily
     let entry: QuotaEntry
@@ -69,76 +116,128 @@ struct HaloWidgetView: View {
         InteractiveQuotaWidgetCard(
             accounts: entry.accounts,
             family: family,
-            selectedAccountID: entry.selectedAccountID
+            selectedAccountID: entry.selectedAccountID,
+            isAccountTextHidden: entry.isAccountTextHidden,
+            pageIndex: entry.pageIndex
         )
         .containerBackground(for: .widget) {
-            Color.clear
+            HaloBackground(cornerRadius: family.cornerRadius)
         }
     }
 }
 
 private struct InteractiveQuotaWidgetCard: View {
+    @Environment(\.widgetRenderingMode) private var widgetRenderingMode
+
     var accounts: [QuotaAccount]
     var family: WidgetFamilyShape
     var selectedAccountID: QuotaAccount.ID?
+    var isAccountTextHidden: Bool
+    var pageIndex: Int
 
     private var selectedAccount: QuotaAccount? {
         accounts.first(where: { $0.id == selectedAccountID }) ?? accounts.first
     }
 
+    private var visiblePageIndex: Int {
+        guard family.slotCount > 0 else {
+            return 0
+        }
+        let maxPageIndex = max(0, Int(ceil(Double(accounts.count) / Double(family.slotCount))) - 1)
+        return min(max(0, pageIndex), maxPageIndex)
+    }
+
+    private var isVibrant: Bool {
+        widgetRenderingMode == .vibrant
+    }
+
+    private var controlForeground: Color {
+        isVibrant ? Color(hex: "#24586E").opacity(0.86) : Color.white.opacity(0.72)
+    }
+
+    private var controlBackground: Color {
+        isVibrant ? Color(hex: "#1B6F95").opacity(0.10) : Color.white.opacity(0.09)
+    }
+
     var body: some View {
-        let slots = accounts.prefix(family.slotCount).map(Optional.some)
+        let pageStartIndex = visiblePageIndex * family.slotCount
+        let slots = accounts.dropFirst(pageStartIndex).prefix(family.slotCount).map(Optional.some)
         let emptySlots = Array<QuotaAccount?>(repeating: nil, count: max(0, family.slotCount - slots.count))
         let visibleAccounts = slots + emptySlots
+        let showsPager = accounts.count > family.slotCount
 
-        ZStack(alignment: .topTrailing) {
-            HaloBackground(cornerRadius: family.cornerRadius)
+        ZStack(alignment: .bottomTrailing) {
+            HStack(spacing: family.pagerSpacing) {
+                if showsPager {
+                    Button(intent: MoveWidgetPageIntent(offset: -1, accountCount: accounts.count, pageSize: family.slotCount)) {
+                        PagerChevron(direction: .left, family: family, isVisible: true)
+                    }
+                    .buttonStyle(.plain)
+                } else {
+                    PagerChevron(direction: .left, family: family, isVisible: false)
+                }
 
-            VStack(spacing: family.verticalSpacing) {
-                Spacer(minLength: 0)
-
-                HStack(spacing: family.ringSpacing) {
+                HStack(spacing: family.accountSpacing) {
                     ForEach(Array(visibleAccounts.enumerated()), id: \.offset) { _, account in
                         if let account {
                             Button(intent: SelectQuotaAccountIntent(accountID: account.id.uuidString)) {
-                                NestedQuotaRingView(
+                                QuotaAccountSlotView(
                                     account: account,
-                                    diameter: family.ringDiameter,
-                                    isSelected: account.id == selectedAccount?.id
+                                    family: family,
+                                    isSelected: account.id == selectedAccount?.id,
+                                    isTextHidden: isAccountTextHidden
                                 )
                             }
                             .buttonStyle(.plain)
-                            .frame(width: family.ringSlotWidth, height: family.ringSlotWidth)
                         } else {
-                            NestedQuotaRingView(account: nil, diameter: family.ringDiameter)
-                                .frame(width: family.ringSlotWidth, height: family.ringSlotWidth)
+                            QuotaAccountSlotView(account: nil, family: family)
                         }
                     }
                 }
-                .frame(maxWidth: .infinity)
 
-                if family.showsDetails, let selectedAccount {
-                    QuotaWidgetDetail(account: selectedAccount)
-                        .frame(maxWidth: .infinity, alignment: .leading)
+                if showsPager {
+                    Button(intent: MoveWidgetPageIntent(offset: 1, accountCount: accounts.count, pageSize: family.slotCount)) {
+                        PagerChevron(direction: .right, family: family, isVisible: true)
+                    }
+                    .buttonStyle(.plain)
+                } else {
+                    PagerChevron(direction: .right, family: family, isVisible: false)
                 }
-
-                Spacer(minLength: 0)
             }
             .padding(.horizontal, family.horizontalPadding)
-            .padding(.vertical, family.verticalPadding)
+            .padding(.top, family.verticalPadding)
+            .padding(.bottom, family.accountRowBottomPadding)
 
-            if let editURL = URL(string: "halo://accounts") {
-                Link(destination: editURL) {
-                    Image(systemName: "pencil")
-                        .font(.system(size: family.editIconSize, weight: .semibold, design: .rounded))
-                        .foregroundStyle(.white.opacity(0.82))
-                        .frame(width: family.editButtonSize, height: family.editButtonSize)
-                        .background(.white.opacity(0.14), in: Circle())
+            if family.showsDetails, let selectedAccount {
+                QuotaResetReadout(account: selectedAccount, family: family, isTextHidden: isAccountTextHidden)
+                    .padding(.leading, family.resetInfoLeadingPadding)
+                    .padding(.bottom, family.resetInfoBottomPadding)
+                    .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .bottomLeading)
+            }
+
+            HStack(spacing: family.controlSpacing) {
+                Button(intent: ToggleAccountTextVisibilityIntent()) {
+                    Image(systemName: isAccountTextHidden ? "eye.slash" : "eye")
+                        .font(.system(size: family.controlIconSize, weight: .semibold, design: .rounded))
+                        .foregroundStyle(controlForeground)
+                        .frame(width: family.controlButtonSize, height: family.controlButtonSize)
+                        .background(controlBackground, in: Circle())
                 }
                 .buttonStyle(.plain)
-                .padding(.top, family.editButtonPadding)
-                .padding(.trailing, family.editButtonPadding)
+
+                if let editURL = URL(string: "halo://accounts") {
+                    Link(destination: editURL) {
+                        Image(systemName: "square.and.pencil")
+                            .font(.system(size: family.controlIconSize, weight: .semibold, design: .rounded))
+                            .foregroundStyle(controlForeground)
+                            .frame(width: family.controlButtonSize, height: family.controlButtonSize)
+                            .background(controlBackground, in: Circle())
+                    }
+                    .buttonStyle(.plain)
+                }
             }
+            .padding(.bottom, family.controlButtonPadding)
+            .padding(.trailing, family.controlButtonPadding)
         }
     }
 }
@@ -155,5 +254,6 @@ struct HaloWidget: Widget {
         .description("Track weekly quota across local accounts.")
         .supportedFamilies([.systemSmall, .systemMedium])
         .contentMarginsDisabled()
+        .containerBackgroundRemovable(false)
     }
 }

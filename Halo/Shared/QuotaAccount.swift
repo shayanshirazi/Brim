@@ -93,6 +93,54 @@ public struct QuotaAccount: Codable, Hashable, Identifiable {
         return "\(weekday) \(hour12):\(minute) \(period)"
     }
 
+    public func nextWeeklyResetDate(from now: Date = Date(), calendar: Calendar = .current) -> Date {
+        var components = DateComponents()
+        components.weekday = max(1, min(7, resetWeekday))
+        components.hour = resetHour
+        components.minute = resetMinute
+        components.second = 0
+
+        return calendar.nextDate(
+            after: now,
+            matching: components,
+            matchingPolicy: .nextTime,
+            repeatedTimePolicy: .first,
+            direction: .forward
+        ) ?? now
+    }
+
+    public func weeklyResetRelativeText(from now: Date = Date(), calendar: Calendar = .current) -> String {
+        let resetDate = nextWeeklyResetDate(from: now, calendar: calendar)
+        let interval = max(0, resetDate.timeIntervalSince(now))
+
+        guard interval >= 60 else {
+            return "now"
+        }
+
+        let formatter = DateComponentsFormatter()
+        formatter.maximumUnitCount = 2
+        formatter.unitsStyle = .abbreviated
+
+        if interval < 60 * 60 {
+            formatter.allowedUnits = [.minute]
+        } else if interval < 24 * 60 * 60 {
+            formatter.allowedUnits = [.hour, .minute]
+        } else {
+            formatter.allowedUnits = [.day, .hour]
+        }
+
+        return formatter.string(from: interval) ?? resetText
+    }
+
+    public func weeklyResetDateText(from now: Date = Date(), calendar: Calendar = .current) -> String {
+        let resetDate = nextWeeklyResetDate(from: now, calendar: calendar)
+        let formatter = DateFormatter()
+        formatter.calendar = calendar
+        formatter.locale = .current
+        formatter.dateFormat = "EEE MMM d, h:mm a"
+        return formatter.string(from: resetDate)
+    }
+
     public var resolvedCodexProfilePath: String {
         codexProfilePath ?? Self.defaultCodexProfilePath(for: name)
     }

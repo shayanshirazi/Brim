@@ -1,145 +1,321 @@
-import Foundation
 import Combine
+import Foundation
 import WidgetKit
 
 public final class QuotaStore: ObservableObject {
-    public static let appGroupID = "group.dev.halo.shared"
+    private let repository: QuotaRepository
+    private let widgetSnapshotStore: QuotaWidgetSnapshotStore
+    private let refreshService: QuotaRefreshService
 
-    private static let accountsKey = "halo.accounts.v1"
-    private static let selectedAccountIDKey = "halo.selected-account-id.v1"
-    private static let isAccountTextHiddenKey = "halo.account-text-hidden.v1"
-    private static let widgetPageIndexKey = "halo.widget-page-index.v1"
-    private let defaults: UserDefaults
-    public let isUsingSharedDefaults: Bool
+    @Published public private(set) var state: QuotaState
+    @Published public private(set) var storageStatus: QuotaStorageStatus
 
-    @Published public private(set) var accounts: [QuotaAccount]
-
-    public init() {
-        if let sharedDefaults = UserDefaults(suiteName: Self.appGroupID) {
-            defaults = sharedDefaults
-            isUsingSharedDefaults = true
-        } else {
-            defaults = .standard
-            isUsingSharedDefaults = false
-        }
-        accounts = Self.loadAccounts(from: defaults)
+    public var accounts: [QuotaAccount] {
+        state.accounts
     }
 
-    public func addAccount() {
-        let palette = ["#40E06B", "#65D6FF", "#F7C948", "#FF7A90", "#B49BFF"]
-        let nextIndex = accounts.count + 1
-        let account = QuotaAccount(
-            name: "Account \(nextIndex)",
-            colorHex: palette[nextIndex % palette.count],
-            weeklyLimitMinutes: 300,
-            usedMinutes: 0,
-            sessionLimitMinutes: 300,
-            sessionUsedMinutes: 0,
-            resetWeekday: 2,
-            resetHour: 0,
-            resetMinute: 0,
-            codexProfilePath: "$HOME/.codex-accounts/account-\(nextIndex)"
-        )
-        accounts.append(account)
+    public var selectedAccountID: QuotaAccount.ID? {
+        state.selectedAccountID
+    }
+
+    public init() {
+        let repository = QuotaRepository()
+        let widgetSnapshotStore = QuotaWidgetSnapshotStore()
+        self.repository = repository
+        self.widgetSnapshotStore = widgetSnapshotStore
+        refreshService = QuotaRefreshService()
+        let result = repository.load()
+        state = result.state
+        storageStatus = result.status
+
+        if result.status == .firstRun {
+            persist()
+        }
+    }
+
+    public init(
+        repository: QuotaRepository,
+        widgetSnapshotStore: QuotaWidgetSnapshotStore = QuotaWidgetSnapshotStore(),
+        refreshService: QuotaRefreshService = QuotaRefreshService()
+    ) {
+        self.repository = repository
+        self.widgetSnapshotStore = widgetSnapshotStore
+        self.refreshService = refreshService
+        let result = repository.load()
+        state = result.state
+        storageStatus = result.status
+    }
+
+    public func addAccount(connectionKind: QuotaConnectionKind = .codexLogin) {
+        state.addAccount(connectionKind: connectionKind)
         persist()
     }
 
     public func removeAccounts(at offsets: IndexSet) {
-        for index in offsets.sorted(by: >) {
-            accounts.remove(at: index)
-        }
+        state.removeAccounts(at: offsets)
         persist()
     }
 
     public func updateAccount(_ account: QuotaAccount) {
-        guard let index = accounts.firstIndex(where: { $0.id == account.id }) else {
-            return
-        }
-        accounts[index] = account
+        state.updateAccount(account)
         persist()
+    }
+
+    public func selectAccount(id: QuotaAccount.ID?) {
+        state.selectAccount(id: id)
+        persist(reloadWidget: false)
     }
 
     public func resetSeedData() {
-        accounts = QuotaAccount.examples
-        Self.setSelectedAccountID(accounts.first?.id)
+        state.resetSeedData()
         persist()
     }
 
-    public static func widgetSnapshot() -> [QuotaAccount] {
-        let defaults = UserDefaults(suiteName: appGroupID) ?? .standard
-        return loadAccounts(from: defaults)
-    }
-
-    public static func selectedAccountID() -> UUID? {
-        let defaults = UserDefaults(suiteName: appGroupID) ?? .standard
-        guard let rawID = defaults.string(forKey: selectedAccountIDKey) else {
-            return nil
+    public func markRefreshAttempt(for accountID: QuotaAccount.ID) {
+        guard var account = accounts.first(where: { $0.id == accountID }) else {
+            return
         }
-        return UUID(uuidString: rawID)
+
+        account.lastRefreshAttemptAt = Date()
+        account.refreshStatus = account.connectionKind == .manual ? .manual : .waitingForQuotaSource
+        account.refreshMessage = nil
+        updateAccount(account)
     }
 
-    public static func setSelectedAccountID(_ accountID: UUID?) {
-        let defaults = UserDefaults(suiteName: appGroupID) ?? .standard
-        if let accountID {
-            defaults.set(accountID.uuidString, forKey: selectedAccountIDKey)
-        } else {
-            defaults.removeObject(forKey: selectedAccountIDKey)
+    @MainActor
+    public func refreshConnectedAccounts() async {
+        let now = Date()
+        let connectedAccounts = accounts.filter { $0.connectionKind != .manual }
+
+        for var account in connectedAccounts {
+            account.lastRefreshAttemptAt = now
+            account.refreshStatus = .waitingForQuotaSource
+            account.refreshMessage = nil
+            state.updateAccount(account)
         }
-        WidgetCenter.shared.reloadAllTimelines()
+        persist()
+
+        for var account in connectedAccounts {
+            let result = await refreshService.refresh(account)
+            account.lastRefreshAttemptAt = now
+            account.refreshStatus = result.status
+            account.refreshMessage = result.message
+
+            if result.status == .ready {
+                account.lastSuccessfulRefreshAt = Date()
+            }
+
+            if let quota = result.quota {
+                account.weeklyLimitMinutes = quota.weeklyLimitMinutes ?? account.weeklyLimitMinutes
+                account.usedMinutes = quota.usedMinutes ?? account.usedMinutes
+                account.sessionLimitMinutes = quota.sessionLimitMinutes ?? account.sessionLimitMinutes
+                account.sessionUsedMinutes = quota.sessionUsedMinutes ?? account.sessionUsedMinutes
+                account.resetWeekday = quota.resetWeekday ?? account.resetWeekday
+                account.resetHour = quota.resetHour ?? account.resetHour
+                account.resetMinute = quota.resetMinute ?? account.resetMinute
+            }
+
+            state.updateAccount(account)
+        }
+        persist()
     }
 
-    public static func isAccountTextHidden() -> Bool {
-        let defaults = UserDefaults(suiteName: appGroupID) ?? .standard
-        return defaults.bool(forKey: isAccountTextHiddenKey)
+    private func persist(reloadWidget: Bool = true) {
+        storageStatus = repository.save(state)
+        if reloadWidget {
+            let widgetStatus = widgetSnapshotStore.save(state)
+            if storageStatus == .ready, widgetStatus == .unavailable {
+                storageStatus = .unavailable
+            }
+            WidgetCenter.shared.reloadAllTimelines()
+        }
+    }
+}
+
+public enum QuotaWidgetCommands {
+    public static func snapshot() -> QuotaState {
+        let result = QuotaWidgetSnapshotStore().load()
+        if result.status == .unavailable {
+            return QuotaRepository().load().state
+        }
+        return result.state
+    }
+
+    public static func selectAccount(id: QuotaAccount.ID?) {
+        update { state in
+            state.selectAccount(id: id)
+        }
     }
 
     public static func setAccountTextHidden(_ isHidden: Bool) {
-        let defaults = UserDefaults(suiteName: appGroupID) ?? .standard
-        defaults.set(isHidden, forKey: isAccountTextHiddenKey)
-        WidgetCenter.shared.reloadAllTimelines()
+        update { state in
+            state.setAccountTextHidden(isHidden)
+        }
     }
 
     public static func toggleAccountTextHidden() {
-        setAccountTextHidden(!isAccountTextHidden())
+        update { state in
+            state.toggleAccountTextHidden()
+        }
     }
 
-    public static func widgetPageIndex() -> Int {
-        let defaults = UserDefaults(suiteName: appGroupID) ?? .standard
-        return max(0, defaults.integer(forKey: widgetPageIndexKey))
+    public static func setWidgetPageIndex(_ pageIndex: Int, pageSize: Int) {
+        update { state in
+            state.setWidgetPageIndex(pageIndex, pageSize: pageSize)
+        }
     }
 
-    public static func setWidgetPageIndex(_ pageIndex: Int) {
-        let defaults = UserDefaults(suiteName: appGroupID) ?? .standard
-        defaults.set(max(0, pageIndex), forKey: widgetPageIndexKey)
+    public static func moveWidgetPage(by offset: Int, pageSize: Int) {
+        update { state in
+            state.moveWidgetPage(by: offset, pageSize: pageSize)
+        }
+    }
+
+    private static func update(_ mutate: (inout QuotaState) -> Void) {
+        let snapshotStore = QuotaWidgetSnapshotStore()
+        var state = snapshotStore.load().state
+        mutate(&state)
+        _ = snapshotStore.save(state)
         WidgetCenter.shared.reloadAllTimelines()
     }
+}
 
-    public static func moveWidgetPage(by offset: Int, accountCount: Int, pageSize: Int) {
-        guard accountCount > pageSize, pageSize > 0 else {
-            setWidgetPageIndex(0)
-            return
+public struct QuotaRefreshService {
+    public var apiTokenIsAvailable: (String) -> Bool
+    public var commandRunner: (String, String) async -> CommandResult
+
+    public init(
+        apiTokenIsAvailable: @escaping (String) -> Bool = { _ in false },
+        commandRunner: @escaping (String, String) async -> CommandResult = { _, _ in
+            CommandResult(
+                exitCode: -1,
+                standardOutput: "",
+                standardError: "Codex status runner is not configured."
+            )
         }
-
-        let maxPageIndex = max(0, Int(ceil(Double(accountCount) / Double(pageSize))) - 1)
-        let nextPageIndex = min(max(0, widgetPageIndex() + offset), maxPageIndex)
-        setWidgetPageIndex(nextPageIndex)
+    ) {
+        self.apiTokenIsAvailable = apiTokenIsAvailable
+        self.commandRunner = commandRunner
     }
 
-    private func persist() {
-        guard let data = try? JSONEncoder().encode(accounts) else {
-            return
+    public func refresh(_ account: QuotaAccount) async -> QuotaRefreshResult {
+        if let quota = readLocalQuotaSnapshot(for: account) {
+            return QuotaRefreshResult(
+                status: .ready,
+                message: "Loaded quota snapshot from local profile.",
+                quota: quota
+            )
         }
-        defaults.set(data, forKey: Self.accountsKey)
-        WidgetCenter.shared.reloadAllTimelines()
+
+        switch account.connectionKind {
+        case .manual:
+            return QuotaRefreshResult(status: .manual, message: "Manual values are used.", quota: nil)
+        case .apiToken:
+            guard let credentialID = account.credentialID, apiTokenIsAvailable(credentialID) else {
+                return QuotaRefreshResult(
+                    status: .notConnected,
+                    message: "Add an API token before automatic quota refresh can run.",
+                    quota: nil
+                )
+            }
+
+            return QuotaRefreshResult(
+                status: .ready,
+                message: "API token is saved in Keychain. Halo has no configured quota endpoint yet.",
+                quota: nil
+            )
+        case .codexLogin:
+            let profilePath = QuotaFormatting.expandedHomePath(account.resolvedCodexProfilePath)
+            let result = await commandRunner(profilePath, "login status")
+            let output = (result.standardOutput + "\n" + result.standardError).lowercased()
+
+            if result.exitCode == 0, output.contains("logged in") {
+                return QuotaRefreshResult(
+                    status: .ready,
+                    message: "Codex login is valid. Add a local quota snapshot when Codex exposes usage data.",
+                    quota: nil
+                )
+            }
+
+            return QuotaRefreshResult(
+                status: .refreshFailed,
+                message: result.standardOutput.isEmpty ? result.standardError : result.standardOutput,
+                quota: nil
+            )
+        }
     }
 
-    private static func loadAccounts(from defaults: UserDefaults) -> [QuotaAccount] {
-        guard
-            let data = defaults.data(forKey: accountsKey),
-            let accounts = try? JSONDecoder().decode([QuotaAccount].self, from: data)
-        else {
-            return QuotaAccount.examples
+    private func readLocalQuotaSnapshot(for account: QuotaAccount) -> QuotaUsageSnapshot? {
+        let profilePath = QuotaFormatting.expandedHomePath(account.resolvedCodexProfilePath)
+        let candidates = [
+            URL(fileURLWithPath: profilePath).appendingPathComponent("halo-quota.json"),
+            URL(fileURLWithPath: profilePath).appendingPathComponent("quota.json")
+        ]
+
+        for url in candidates {
+            guard
+                let data = try? Data(contentsOf: url),
+                let quota = try? JSONDecoder().decode(QuotaUsageSnapshot.self, from: data)
+            else {
+                continue
+            }
+
+            return quota
         }
-        return accounts
+
+        return nil
+    }
+
+}
+
+public struct QuotaRefreshResult {
+    public var status: QuotaRefreshStatus
+    public var message: String?
+    public var quota: QuotaUsageSnapshot?
+
+    public init(status: QuotaRefreshStatus, message: String?, quota: QuotaUsageSnapshot?) {
+        self.status = status
+        self.message = message
+        self.quota = quota
+    }
+}
+
+public struct QuotaUsageSnapshot: Codable, Hashable {
+    public var weeklyLimitMinutes: Int?
+    public var usedMinutes: Int?
+    public var sessionLimitMinutes: Int?
+    public var sessionUsedMinutes: Int?
+    public var resetWeekday: Int?
+    public var resetHour: Int?
+    public var resetMinute: Int?
+
+    public init(
+        weeklyLimitMinutes: Int? = nil,
+        usedMinutes: Int? = nil,
+        sessionLimitMinutes: Int? = nil,
+        sessionUsedMinutes: Int? = nil,
+        resetWeekday: Int? = nil,
+        resetHour: Int? = nil,
+        resetMinute: Int? = nil
+    ) {
+        self.weeklyLimitMinutes = weeklyLimitMinutes
+        self.usedMinutes = usedMinutes
+        self.sessionLimitMinutes = sessionLimitMinutes
+        self.sessionUsedMinutes = sessionUsedMinutes
+        self.resetWeekday = resetWeekday
+        self.resetHour = resetHour
+        self.resetMinute = resetMinute
+    }
+}
+
+public struct CommandResult: Hashable {
+    public var exitCode: Int32
+    public var standardOutput: String
+    public var standardError: String
+
+    public init(exitCode: Int32, standardOutput: String, standardError: String) {
+        self.exitCode = exitCode
+        self.standardOutput = standardOutput
+        self.standardError = standardError
     }
 }

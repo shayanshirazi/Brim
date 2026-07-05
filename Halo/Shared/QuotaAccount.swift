@@ -1,8 +1,36 @@
 import Foundation
-import SwiftUI
-#if os(macOS)
-import AppKit
-#endif
+
+public enum QuotaConnectionKind: String, Codable, Hashable {
+    case codexLogin
+    case apiToken
+    case manual
+
+    public var title: String {
+        switch self {
+        case .codexLogin: return "Codex login"
+        case .apiToken: return "API token"
+        case .manual: return "Manual"
+        }
+    }
+}
+
+public enum QuotaRefreshStatus: String, Codable, Hashable {
+    case notConnected
+    case ready
+    case waitingForQuotaSource
+    case refreshFailed
+    case manual
+
+    public var title: String {
+        switch self {
+        case .notConnected: return "Not connected"
+        case .ready: return "Connected"
+        case .waitingForQuotaSource: return "Waiting for quota source"
+        case .refreshFailed: return "Refresh failed"
+        case .manual: return "Manual values"
+        }
+    }
+}
 
 public struct QuotaAccount: Codable, Hashable, Identifiable {
     public var id: UUID
@@ -16,6 +44,32 @@ public struct QuotaAccount: Codable, Hashable, Identifiable {
     public var resetHour: Int
     public var resetMinute: Int
     public var codexProfilePath: String?
+    public var connectionKind: QuotaConnectionKind
+    public var refreshStatus: QuotaRefreshStatus
+    public var lastRefreshAttemptAt: Date?
+    public var lastSuccessfulRefreshAt: Date?
+    public var refreshMessage: String?
+    public var credentialID: String?
+
+    private enum CodingKeys: String, CodingKey {
+        case id
+        case name
+        case colorHex
+        case weeklyLimitMinutes
+        case usedMinutes
+        case sessionLimitMinutes
+        case sessionUsedMinutes
+        case resetWeekday
+        case resetHour
+        case resetMinute
+        case codexProfilePath
+        case connectionKind
+        case refreshStatus
+        case lastRefreshAttemptAt
+        case lastSuccessfulRefreshAt
+        case refreshMessage
+        case credentialID
+    }
 
     public init(
         id: UUID = UUID(),
@@ -23,12 +77,18 @@ public struct QuotaAccount: Codable, Hashable, Identifiable {
         colorHex: String,
         weeklyLimitMinutes: Int,
         usedMinutes: Int,
-        sessionLimitMinutes: Int? = 300,
+        sessionLimitMinutes: Int? = QuotaAccountDefaults.sessionLimitMinutes,
         sessionUsedMinutes: Int? = nil,
         resetWeekday: Int,
         resetHour: Int,
         resetMinute: Int,
-        codexProfilePath: String? = nil
+        codexProfilePath: String? = nil,
+        connectionKind: QuotaConnectionKind = .codexLogin,
+        refreshStatus: QuotaRefreshStatus = .waitingForQuotaSource,
+        lastRefreshAttemptAt: Date? = nil,
+        lastSuccessfulRefreshAt: Date? = nil,
+        refreshMessage: String? = nil,
+        credentialID: String? = nil
     ) {
         self.id = id
         self.name = name
@@ -41,6 +101,54 @@ public struct QuotaAccount: Codable, Hashable, Identifiable {
         self.resetHour = resetHour
         self.resetMinute = resetMinute
         self.codexProfilePath = codexProfilePath
+        self.connectionKind = connectionKind
+        self.refreshStatus = refreshStatus
+        self.lastRefreshAttemptAt = lastRefreshAttemptAt
+        self.lastSuccessfulRefreshAt = lastSuccessfulRefreshAt
+        self.refreshMessage = refreshMessage
+        self.credentialID = credentialID
+    }
+
+    public init(from decoder: Decoder) throws {
+        let container = try decoder.container(keyedBy: CodingKeys.self)
+        id = try container.decode(UUID.self, forKey: .id)
+        name = try container.decode(String.self, forKey: .name)
+        colorHex = try container.decode(String.self, forKey: .colorHex)
+        weeklyLimitMinutes = try container.decode(Int.self, forKey: .weeklyLimitMinutes)
+        usedMinutes = try container.decode(Int.self, forKey: .usedMinutes)
+        sessionLimitMinutes = try container.decodeIfPresent(Int.self, forKey: .sessionLimitMinutes)
+        sessionUsedMinutes = try container.decodeIfPresent(Int.self, forKey: .sessionUsedMinutes)
+        resetWeekday = try container.decode(Int.self, forKey: .resetWeekday)
+        resetHour = try container.decode(Int.self, forKey: .resetHour)
+        resetMinute = try container.decode(Int.self, forKey: .resetMinute)
+        codexProfilePath = try container.decodeIfPresent(String.self, forKey: .codexProfilePath)
+        connectionKind = try container.decodeIfPresent(QuotaConnectionKind.self, forKey: .connectionKind) ?? .codexLogin
+        refreshStatus = try container.decodeIfPresent(QuotaRefreshStatus.self, forKey: .refreshStatus) ?? .waitingForQuotaSource
+        lastRefreshAttemptAt = try container.decodeIfPresent(Date.self, forKey: .lastRefreshAttemptAt)
+        lastSuccessfulRefreshAt = try container.decodeIfPresent(Date.self, forKey: .lastSuccessfulRefreshAt)
+        refreshMessage = try container.decodeIfPresent(String.self, forKey: .refreshMessage)
+        credentialID = try container.decodeIfPresent(String.self, forKey: .credentialID)
+    }
+
+    public func encode(to encoder: Encoder) throws {
+        var container = encoder.container(keyedBy: CodingKeys.self)
+        try container.encode(id, forKey: .id)
+        try container.encode(name, forKey: .name)
+        try container.encode(colorHex, forKey: .colorHex)
+        try container.encode(weeklyLimitMinutes, forKey: .weeklyLimitMinutes)
+        try container.encode(usedMinutes, forKey: .usedMinutes)
+        try container.encodeIfPresent(sessionLimitMinutes, forKey: .sessionLimitMinutes)
+        try container.encodeIfPresent(sessionUsedMinutes, forKey: .sessionUsedMinutes)
+        try container.encode(resetWeekday, forKey: .resetWeekday)
+        try container.encode(resetHour, forKey: .resetHour)
+        try container.encode(resetMinute, forKey: .resetMinute)
+        try container.encodeIfPresent(codexProfilePath, forKey: .codexProfilePath)
+        try container.encode(connectionKind, forKey: .connectionKind)
+        try container.encode(refreshStatus, forKey: .refreshStatus)
+        try container.encodeIfPresent(lastRefreshAttemptAt, forKey: .lastRefreshAttemptAt)
+        try container.encodeIfPresent(lastSuccessfulRefreshAt, forKey: .lastSuccessfulRefreshAt)
+        try container.encodeIfPresent(refreshMessage, forKey: .refreshMessage)
+        try container.encodeIfPresent(credentialID, forKey: .credentialID)
     }
 
     public var weeklyRemainingMinutes: Int {
@@ -61,7 +169,7 @@ public struct QuotaAccount: Codable, Hashable, Identifiable {
     }
 
     public var sessionLimit: Int {
-        max(1, sessionLimitMinutes ?? 300)
+        max(1, sessionLimitMinutes ?? QuotaAccountDefaults.sessionLimitMinutes)
     }
 
     public var sessionUsed: Int {
@@ -76,135 +184,7 @@ public struct QuotaAccount: Codable, Hashable, Identifiable {
         min(1, Double(sessionRemainingMinutes) / Double(sessionLimit))
     }
 
-    public var remainingPercentText: String {
-        "\(Int(round(weeklyRemainingFraction * 100)))%"
-    }
-
-    public var sessionPercentText: String {
-        "\(Int(round(sessionRemainingFraction * 100)))%"
-    }
-
-    public var resetText: String {
-        let weekdays = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"]
-        let weekday = weekdays[max(0, min(6, resetWeekday - 1))]
-        let hour12 = resetHour % 12 == 0 ? 12 : resetHour % 12
-        let minute = String(format: "%02d", resetMinute)
-        let period = resetHour < 12 ? "AM" : "PM"
-        return "\(weekday) \(hour12):\(minute) \(period)"
-    }
-
-    public func nextWeeklyResetDate(from now: Date = Date(), calendar: Calendar = .current) -> Date {
-        var components = DateComponents()
-        components.weekday = max(1, min(7, resetWeekday))
-        components.hour = resetHour
-        components.minute = resetMinute
-        components.second = 0
-
-        return calendar.nextDate(
-            after: now,
-            matching: components,
-            matchingPolicy: .nextTime,
-            repeatedTimePolicy: .first,
-            direction: .forward
-        ) ?? now
-    }
-
-    public func weeklyResetRelativeText(from now: Date = Date(), calendar: Calendar = .current) -> String {
-        let resetDate = nextWeeklyResetDate(from: now, calendar: calendar)
-        let interval = max(0, resetDate.timeIntervalSince(now))
-
-        guard interval >= 60 else {
-            return "now"
-        }
-
-        let formatter = DateComponentsFormatter()
-        formatter.maximumUnitCount = 2
-        formatter.unitsStyle = .abbreviated
-
-        if interval < 60 * 60 {
-            formatter.allowedUnits = [.minute]
-        } else if interval < 24 * 60 * 60 {
-            formatter.allowedUnits = [.hour, .minute]
-        } else {
-            formatter.allowedUnits = [.day, .hour]
-        }
-
-        return formatter.string(from: interval) ?? resetText
-    }
-
-    public func weeklyResetDateText(from now: Date = Date(), calendar: Calendar = .current) -> String {
-        let resetDate = nextWeeklyResetDate(from: now, calendar: calendar)
-        let formatter = DateFormatter()
-        formatter.calendar = calendar
-        formatter.locale = .current
-        formatter.dateFormat = "EEE MMM d, h:mm a"
-        return formatter.string(from: resetDate)
-    }
-
     public var resolvedCodexProfilePath: String {
-        codexProfilePath ?? Self.defaultCodexProfilePath(for: name)
-    }
-
-    public static func defaultCodexProfilePath(for name: String) -> String {
-        let slug = name
-            .lowercased()
-            .components(separatedBy: CharacterSet.alphanumerics.inverted)
-            .filter { !$0.isEmpty }
-            .joined(separator: "-")
-
-        return "$HOME/.codex-accounts/\(slug.isEmpty ? "account" : slug)"
-    }
-
-    public static let examples: [QuotaAccount] = [
-        QuotaAccount(
-            name: "Main",
-            colorHex: "#40E06B",
-            weeklyLimitMinutes: 300,
-            usedMinutes: 0,
-            resetWeekday: 2,
-            resetHour: 0,
-            resetMinute: 0,
-            codexProfilePath: "$HOME/.codex-accounts/main"
-        ),
-        QuotaAccount(
-            name: "Backup",
-            colorHex: "#65D6FF",
-            weeklyLimitMinutes: 300,
-            usedMinutes: 42,
-            resetWeekday: 2,
-            resetHour: 0,
-            resetMinute: 0,
-            codexProfilePath: "$HOME/.codex-accounts/backup"
-        )
-    ]
-}
-
-public extension Color {
-    init(hex: String) {
-        let cleaned = hex.trimmingCharacters(in: CharacterSet(charactersIn: "#"))
-        var value: UInt64 = 0
-        Scanner(string: cleaned).scanHexInt64(&value)
-        self.init(
-            red: Double((value >> 16) & 0xff) / 255,
-            green: Double((value >> 8) & 0xff) / 255,
-            blue: Double(value & 0xff) / 255
-        )
-    }
-
-    var quotaHexString: String {
-        #if os(macOS)
-        let nativeColor = NSColor(self)
-        guard let color = nativeColor.usingColorSpace(.sRGB) else {
-            return "#40E06B"
-        }
-        return String(
-            format: "#%02X%02X%02X",
-            Int(round(color.redComponent * 255)),
-            Int(round(color.greenComponent * 255)),
-            Int(round(color.blueComponent * 255))
-        )
-        #else
-        return "#40E06B"
-        #endif
+        codexProfilePath ?? QuotaAccountDefaults.defaultCodexProfilePath(for: name)
     }
 }

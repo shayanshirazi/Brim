@@ -19,6 +19,35 @@
 		00000000000000000000000A /* QuotaRingView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 000000000000000000000105 /* QuotaRingView.swift */; };
 		00000000000000000000000B /* Assets.xcassets in Resources */ = {isa = PBXBuildFile; fileRef = 000000000000000000000108 /* Assets.xcassets */; };
 		00000000000000000000000C /* HaloWidget.appex in Embed App Extensions */ = {isa = PBXBuildFile; fileRef = 000000000000000000000201 /* HaloWidget.appex */; settings = {ATTRIBUTES = (CodeSignOnCopy, RemoveHeadersOnCopy, ); }; };
+		00000000000000000000000D /* QuotaAccountDefaults.swift in Sources */ = {isa = PBXBuildFile; fileRef = 00000000000000000000010D /* QuotaAccountDefaults.swift */; };
+		00000000000000000000000E /* QuotaAccountDefaults.swift in Sources */ = {isa = PBXBuildFile; fileRef = 00000000000000000000010D /* QuotaAccountDefaults.swift */; };
+		00000000000000000000000F /* QuotaFormatting.swift in Sources */ = {isa = PBXBuildFile; fileRef = 00000000000000000000010E /* QuotaFormatting.swift */; };
+		000000000000000000000010 /* QuotaFormatting.swift in Sources */ = {isa = PBXBuildFile; fileRef = 00000000000000000000010E /* QuotaFormatting.swift */; };
+		000000000000000000000011 /* QuotaColor.swift in Sources */ = {isa = PBXBuildFile; fileRef = 00000000000000000000010F /* QuotaColor.swift */; };
+		000000000000000000000012 /* QuotaColor.swift in Sources */ = {isa = PBXBuildFile; fileRef = 00000000000000000000010F /* QuotaColor.swift */; };
+		000000000000000000000013 /* QuotaState.swift in Sources */ = {isa = PBXBuildFile; fileRef = 000000000000000000000110 /* QuotaState.swift */; };
+		000000000000000000000014 /* QuotaState.swift in Sources */ = {isa = PBXBuildFile; fileRef = 000000000000000000000110 /* QuotaState.swift */; };
+		000000000000000000000015 /* QuotaRepository.swift in Sources */ = {isa = PBXBuildFile; fileRef = 000000000000000000000111 /* QuotaRepository.swift */; };
+		000000000000000000000016 /* QuotaRepository.swift in Sources */ = {isa = PBXBuildFile; fileRef = 000000000000000000000111 /* QuotaRepository.swift */; };
+		000000000000000000000017 /* AppRoute.swift in Sources */ = {isa = PBXBuildFile; fileRef = 000000000000000000000112 /* AppRoute.swift */; };
+		000000000000000000000018 /* AppRoute.swift in Sources */ = {isa = PBXBuildFile; fileRef = 000000000000000000000112 /* AppRoute.swift */; };
+		000000000000000000000019 /* QuotaWidgetLayout.swift in Sources */ = {isa = PBXBuildFile; fileRef = 000000000000000000000113 /* QuotaWidgetLayout.swift */; };
+		00000000000000000000001A /* QuotaWidgetLayout.swift in Sources */ = {isa = PBXBuildFile; fileRef = 000000000000000000000113 /* QuotaWidgetLayout.swift */; };
+		00000000000000000000001B /* QuotaWidgetSurfaces.swift in Sources */ = {isa = PBXBuildFile; fileRef = 000000000000000000000114 /* QuotaWidgetSurfaces.swift */; };
+		00000000000000000000001C /* QuotaWidgetSurfaces.swift in Sources */ = {isa = PBXBuildFile; fileRef = 000000000000000000000114 /* QuotaWidgetSurfaces.swift */; };
+		00000000000000000000001D /* QuotaWidgetControls.swift in Sources */ = {isa = PBXBuildFile; fileRef = 000000000000000000000115 /* QuotaWidgetControls.swift */; };
+		00000000000000000000001E /* QuotaWidgetControls.swift in Sources */ = {isa = PBXBuildFile; fileRef = 000000000000000000000115 /* QuotaWidgetControls.swift */; };
+		00000000000000000000001F /* QuotaWidgetContent.swift in Sources */ = {isa = PBXBuildFile; fileRef = 000000000000000000000116 /* QuotaWidgetContent.swift */; };
+		000000000000000000000020 /* QuotaWidgetContent.swift in Sources */ = {isa = PBXBuildFile; fileRef = 000000000000000000000116 /* QuotaWidgetContent.swift */; };
+		000000000000000000000021 /* QuotaWidgetCard.swift in Sources */ = {isa = PBXBuildFile; fileRef = 000000000000000000000117 /* QuotaWidgetCard.swift */; };
+		000000000000000000000022 /* QuotaWidgetCard.swift in Sources */ = {isa = PBXBuildFile; fileRef = 000000000000000000000117 /* QuotaWidgetCard.swift */; };
+		000000000000000000000023 /* AccountSidebar.swift in Sources */ = {isa = PBXBuildFile; fileRef = 000000000000000000000118 /* AccountSidebar.swift */; };
+		000000000000000000000024 /* AccountEditor.swift in Sources */ = {isa = PBXBuildFile; fileRef = 000000000000000000000119 /* AccountEditor.swift */; };
+		000000000000000000000025 /* UsagePanel.swift in Sources */ = {isa = PBXBuildFile; fileRef = 00000000000000000000011A /* UsagePanel.swift */; };
+		000000000000000000000026 /* CodexProfilePanel.swift in Sources */ = {isa = PBXBuildFile; fileRef = 00000000000000000000011B /* CodexProfilePanel.swift */; };
+		000000000000000000000027 /* AppChrome.swift in Sources */ = {isa = PBXBuildFile; fileRef = 00000000000000000000011C /* AppChrome.swift */; };
+		000000000000000000000028 /* CredentialStore.swift in Sources */ = {isa = PBXBuildFile; fileRef = 00000000000000000000011D /* CredentialStore.swift */; };
+		000000000000000000000029 /* CodexCommandRunner.swift in Sources */ = {isa = PBXBuildFile; fileRef = 00000000000000000000011E /* CodexCommandRunner.swift */; };
 /* End PBXBuildFile section */
 
 /* Begin PBXContainerItemProxy section */
@@ -58,6 +87,24 @@
 		00000000000000000000010A /* Info.plist */ = {isa = PBXFileReference; lastKnownFileType = text.plist.xml; path = Info.plist; sourceTree = "<group>"; };
 		00000000000000000000010B /* Halo.entitlements */ = {isa = PBXFileReference; lastKnownFileType = text.plist.entitlements; path = Halo.entitlements; sourceTree = "<group>"; };
 		00000000000000000000010C /* HaloWidget.entitlements */ = {isa = PBXFileReference; lastKnownFileType = text.plist.entitlements; path = HaloWidget.entitlements; sourceTree = "<group>"; };
+		00000000000000000000010D /* QuotaAccountDefaults.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = QuotaAccountDefaults.swift; sourceTree = "<group>"; };
+		00000000000000000000010E /* QuotaFormatting.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = QuotaFormatting.swift; sourceTree = "<group>"; };
+		00000000000000000000010F /* QuotaColor.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = QuotaColor.swift; sourceTree = "<group>"; };
+		000000000000000000000110 /* QuotaState.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = QuotaState.swift; sourceTree = "<group>"; };
+		000000000000000000000111 /* QuotaRepository.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = QuotaRepository.swift; sourceTree = "<group>"; };
+		000000000000000000000112 /* AppRoute.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AppRoute.swift; sourceTree = "<group>"; };
+		000000000000000000000113 /* QuotaWidgetLayout.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = QuotaWidgetLayout.swift; sourceTree = "<group>"; };
+		000000000000000000000114 /* QuotaWidgetSurfaces.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = QuotaWidgetSurfaces.swift; sourceTree = "<group>"; };
+		000000000000000000000115 /* QuotaWidgetControls.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = QuotaWidgetControls.swift; sourceTree = "<group>"; };
+		000000000000000000000116 /* QuotaWidgetContent.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = QuotaWidgetContent.swift; sourceTree = "<group>"; };
+		000000000000000000000117 /* QuotaWidgetCard.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = QuotaWidgetCard.swift; sourceTree = "<group>"; };
+		000000000000000000000118 /* AccountSidebar.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AccountSidebar.swift; sourceTree = "<group>"; };
+		000000000000000000000119 /* AccountEditor.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AccountEditor.swift; sourceTree = "<group>"; };
+		00000000000000000000011A /* UsagePanel.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = UsagePanel.swift; sourceTree = "<group>"; };
+		00000000000000000000011B /* CodexProfilePanel.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CodexProfilePanel.swift; sourceTree = "<group>"; };
+		00000000000000000000011C /* AppChrome.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AppChrome.swift; sourceTree = "<group>"; };
+		00000000000000000000011D /* CredentialStore.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CredentialStore.swift; sourceTree = "<group>"; };
+		00000000000000000000011E /* CodexCommandRunner.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CodexCommandRunner.swift; sourceTree = "<group>"; };
 		000000000000000000000200 /* Halo.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = Halo.app; sourceTree = BUILT_PRODUCTS_DIR; };
 		000000000000000000000201 /* HaloWidget.appex */ = {isa = PBXFileReference; explicitFileType = "wrapper.app-extension"; includeInIndex = 0; path = HaloWidget.appex; sourceTree = BUILT_PRODUCTS_DIR; };
 /* End PBXFileReference section */
@@ -112,6 +159,13 @@
 			children = (
 				000000000000000000000101 /* HaloApp.swift */,
 				000000000000000000000102 /* AccountSettingsView.swift */,
+				000000000000000000000118 /* AccountSidebar.swift */,
+				000000000000000000000119 /* AccountEditor.swift */,
+				00000000000000000000011A /* UsagePanel.swift */,
+				00000000000000000000011B /* CodexProfilePanel.swift */,
+				00000000000000000000011C /* AppChrome.swift */,
+				00000000000000000000011D /* CredentialStore.swift */,
+				00000000000000000000011E /* CodexCommandRunner.swift */,
 				000000000000000000000106 /* Assets.xcassets */,
 				000000000000000000000109 /* Info.plist */,
 				00000000000000000000010B /* Halo.entitlements */,
@@ -134,8 +188,19 @@
 			isa = PBXGroup;
 			children = (
 				000000000000000000000103 /* QuotaAccount.swift */,
+				00000000000000000000010D /* QuotaAccountDefaults.swift */,
+				00000000000000000000010E /* QuotaFormatting.swift */,
+				00000000000000000000010F /* QuotaColor.swift */,
+				000000000000000000000110 /* QuotaState.swift */,
+				000000000000000000000111 /* QuotaRepository.swift */,
 				000000000000000000000104 /* QuotaStore.swift */,
+				000000000000000000000112 /* AppRoute.swift */,
 				000000000000000000000105 /* QuotaRingView.swift */,
+				000000000000000000000113 /* QuotaWidgetLayout.swift */,
+				000000000000000000000114 /* QuotaWidgetSurfaces.swift */,
+				000000000000000000000115 /* QuotaWidgetControls.swift */,
+				000000000000000000000116 /* QuotaWidgetContent.swift */,
+				000000000000000000000117 /* QuotaWidgetCard.swift */,
 			);
 			path = Shared;
 			sourceTree = "<group>";
@@ -242,9 +307,27 @@
 			files = (
 				000000000000000000000001 /* HaloApp.swift in Sources */,
 				000000000000000000000002 /* AccountSettingsView.swift in Sources */,
+				000000000000000000000023 /* AccountSidebar.swift in Sources */,
+				000000000000000000000024 /* AccountEditor.swift in Sources */,
+				000000000000000000000025 /* UsagePanel.swift in Sources */,
+				000000000000000000000026 /* CodexProfilePanel.swift in Sources */,
+				000000000000000000000027 /* AppChrome.swift in Sources */,
+				000000000000000000000028 /* CredentialStore.swift in Sources */,
+				000000000000000000000029 /* CodexCommandRunner.swift in Sources */,
 				000000000000000000000003 /* QuotaAccount.swift in Sources */,
+				00000000000000000000000D /* QuotaAccountDefaults.swift in Sources */,
+				00000000000000000000000F /* QuotaFormatting.swift in Sources */,
+				000000000000000000000011 /* QuotaColor.swift in Sources */,
+				000000000000000000000013 /* QuotaState.swift in Sources */,
+				000000000000000000000015 /* QuotaRepository.swift in Sources */,
 				000000000000000000000004 /* QuotaStore.swift in Sources */,
+				000000000000000000000017 /* AppRoute.swift in Sources */,
 				000000000000000000000005 /* QuotaRingView.swift in Sources */,
+				000000000000000000000019 /* QuotaWidgetLayout.swift in Sources */,
+				00000000000000000000001B /* QuotaWidgetSurfaces.swift in Sources */,
+				00000000000000000000001D /* QuotaWidgetControls.swift in Sources */,
+				00000000000000000000001F /* QuotaWidgetContent.swift in Sources */,
+				000000000000000000000021 /* QuotaWidgetCard.swift in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -254,8 +337,19 @@
 			files = (
 				000000000000000000000007 /* HaloWidget.swift in Sources */,
 				000000000000000000000008 /* QuotaAccount.swift in Sources */,
+				00000000000000000000000E /* QuotaAccountDefaults.swift in Sources */,
+				000000000000000000000010 /* QuotaFormatting.swift in Sources */,
+				000000000000000000000012 /* QuotaColor.swift in Sources */,
+				000000000000000000000014 /* QuotaState.swift in Sources */,
+				000000000000000000000016 /* QuotaRepository.swift in Sources */,
 				000000000000000000000009 /* QuotaStore.swift in Sources */,
+				000000000000000000000018 /* AppRoute.swift in Sources */,
 				00000000000000000000000A /* QuotaRingView.swift in Sources */,
+				00000000000000000000001A /* QuotaWidgetLayout.swift in Sources */,
+				00000000000000000000001C /* QuotaWidgetSurfaces.swift in Sources */,
+				00000000000000000000001E /* QuotaWidgetControls.swift in Sources */,
+				000000000000000000000020 /* QuotaWidgetContent.swift in Sources */,
+				000000000000000000000022 /* QuotaWidgetCard.swift in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};

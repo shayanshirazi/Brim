@@ -1,5 +1,29 @@
 import SwiftUI
 
+struct AppVersion: Equatable {
+    var marketingVersion: String
+    var buildNumber: String
+
+    static let current = AppVersion(bundle: .main)
+
+    init(
+        marketingVersion: String,
+        buildNumber: String
+    ) {
+        self.marketingVersion = marketingVersion
+        self.buildNumber = buildNumber
+    }
+
+    init(bundle: Bundle) {
+        marketingVersion = bundle.object(forInfoDictionaryKey: "CFBundleShortVersionString") as? String ?? "0"
+        buildNumber = bundle.object(forInfoDictionaryKey: "CFBundleVersion") as? String ?? "0"
+    }
+
+    var badgeText: String {
+        "v\(marketingVersion)"
+    }
+}
+
 struct BrimLogoMark: View {
     var size: CGFloat = 28
     var glow: Bool = true
@@ -14,6 +38,24 @@ struct BrimLogoMark: View {
     }
 }
 
+struct BrimVersionBadge: View {
+    var version: AppVersion = .current
+
+    var body: some View {
+        Text(version.badgeText)
+            .font(.system(size: 9, weight: .black, design: .rounded))
+            .foregroundStyle(Color(hex: "#2CCB68").opacity(0.82))
+            .padding(.horizontal, 5)
+            .frame(height: 16)
+            .background(Color(hex: "#2CCB68").opacity(0.10), in: Capsule())
+            .overlay {
+                Capsule()
+                    .stroke(Color(hex: "#2CCB68").opacity(0.18), lineWidth: 1)
+            }
+            .accessibilityLabel("Version \(version.marketingVersion)")
+    }
+}
+
 struct PanelTitle: View {
     var icon: String
     var title: String
@@ -21,10 +63,33 @@ struct PanelTitle: View {
     var body: some View {
         HStack(spacing: 8) {
             Image(systemName: icon)
-                .font(.system(size: 13, weight: .semibold))
+                .font(.system(size: 11, weight: .bold))
+                .foregroundStyle(.primary.opacity(0.68))
+                .frame(width: 22, height: 22)
+                .background(Color.primary.opacity(0.045), in: Circle())
+                .overlay {
+                    Circle()
+                        .stroke(Color.primary.opacity(0.10), lineWidth: 1)
+                }
             Text(title)
                 .font(.system(size: 15, weight: .bold, design: .rounded))
         }
+    }
+}
+
+struct SettingsGearMark: View {
+    var size: CGFloat = 32
+    var isSelected: Bool = true
+
+    var body: some View {
+        Image(systemName: "gearshape")
+            .font(.system(size: size * 0.44, weight: .semibold))
+            .foregroundStyle(isSelected ? Color(hex: "#2CCB68") : .secondary)
+            .frame(width: size, height: size)
+            .background(
+                isSelected ? Color(hex: "#2CCB68").opacity(0.13) : Color.primary.opacity(0.045),
+                in: Circle()
+            )
     }
 }
 
@@ -41,11 +106,6 @@ struct EmptyAccountsView: View {
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity)
     }
-}
-
-enum CopiedCommand {
-    case login
-    case status
 }
 
 extension View {

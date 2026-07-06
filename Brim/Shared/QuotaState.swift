@@ -23,8 +23,16 @@ public struct QuotaState: Equatable {
         accounts.first(where: { $0.id == selectedAccountID }) ?? accounts.first
     }
 
-    public mutating func addAccount(connectionKind: QuotaConnectionKind = .codexLogin) {
-        let account = QuotaAccountDefaults.newAccount(index: accounts.count + 1, connectionKind: connectionKind)
+    public mutating func addAccount(
+        provider: QuotaProviderKind = .codex,
+        connectionKind: QuotaConnectionKind = .login
+    ) {
+        let account = QuotaAccountDefaults.newAccount(
+            index: accounts.count + 1,
+            provider: provider,
+            connectionKind: connectionKind,
+            existingColorHexes: accounts.map(\.colorHex)
+        )
         accounts.append(account)
         selectedAccountID = account.id
         normalize()
@@ -109,11 +117,22 @@ public struct QuotaState: Equatable {
         let maxPageIndex = max(0, Int(ceil(Double(accounts.count) / Double(safePageSize))) - 1)
         widgetPageIndex = min(max(0, widgetPageIndex), maxPageIndex)
     }
+
+    public func widgetSnapshotState() -> QuotaState {
+        QuotaState(
+            accounts: accounts.map { $0.widgetSnapshotAccount() },
+            selectedAccountID: selectedAccountID,
+            isAccountTextHidden: isAccountTextHidden,
+            widgetPageIndex: widgetPageIndex
+        )
+    }
 }
 
 public extension QuotaAccount {
     func normalizedForStorage() -> QuotaAccount {
         var account = self
+        let trimmedProviderAccountID = account.providerAccountID?.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
+        account.providerAccountID = trimmedProviderAccountID.isEmpty ? nil : trimmedProviderAccountID
         let trimmedEmail = account.accountEmail?.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
         account.accountEmail = trimmedEmail.isEmpty ? nil : trimmedEmail
         account.colorHex = QuotaColor.normalizedHex(colorHex) ?? QuotaColor.fallbackHex
@@ -121,6 +140,9 @@ public extension QuotaAccount {
         account.usedMinutes = min(max(0, usedMinutes), account.weeklyLimitMinutes)
         account.sessionLimitMinutes = max(QuotaAccountDefaults.minimumLimitMinutes, sessionLimit)
         account.sessionUsedMinutes = min(max(0, sessionUsed), account.sessionLimit)
+        account.weeklyUsedPercent = account.weeklyUsedPercent.map { min(100, max(0, $0)) }
+        account.sessionUsedPercent = account.sessionUsedPercent.map { min(100, max(0, $0)) }
+        account.hasUsageSnapshot = account.connectionKind == .manual ? true : account.hasUsageSnapshot
         account.resetWeekday = min(max(1, resetWeekday), 7)
         account.resetHour = min(max(0, resetHour), 23)
         account.resetMinute = min(max(0, resetMinute), 59)

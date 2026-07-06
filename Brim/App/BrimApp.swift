@@ -6,7 +6,12 @@ struct BrimApp: App {
     var body: some Scene {
         WindowGroup {
             BrimAppRootView()
-                .frame(width: BrimWindowMetrics.defaultWidth, height: BrimWindowMetrics.defaultHeight)
+                .frame(
+                    minWidth: BrimWindowMetrics.minWidth,
+                    maxWidth: .infinity,
+                    minHeight: BrimWindowMetrics.minHeight,
+                    maxHeight: .infinity
+                )
                 .background(WindowSizeConfigurator())
         }
         .defaultSize(width: BrimWindowMetrics.defaultWidth, height: BrimWindowMetrics.defaultHeight)
@@ -14,9 +19,13 @@ struct BrimApp: App {
     }
 }
 
-private enum BrimWindowMetrics {
+enum BrimWindowMetrics {
     static let defaultWidth: CGFloat = 980
     static let defaultHeight: CGFloat = 620
+    static let minWidth: CGFloat = 980
+    static let minHeight: CGFloat = 620
+    static let maxWidth: CGFloat = 1280
+    static let maxHeight: CGFloat = 820
 }
 
 private struct WindowSizeConfigurator: NSViewRepresentable {
@@ -40,13 +49,11 @@ private struct WindowSizeConfigurator: NSViewRepresentable {
                 return
             }
 
-            let targetSize = NSSize(
-                width: BrimWindowMetrics.defaultWidth,
-                height: BrimWindowMetrics.defaultHeight
-            )
-            window.minSize = targetSize
-            window.maxSize = targetSize
-            window.styleMask.remove(.resizable)
+            let minSize = NSSize(width: BrimWindowMetrics.minWidth, height: BrimWindowMetrics.minHeight)
+            let maxSize = NSSize(width: BrimWindowMetrics.maxWidth, height: BrimWindowMetrics.maxHeight)
+            window.minSize = minSize
+            window.maxSize = maxSize
+            window.styleMask.insert(.resizable)
 
             guard !coordinator.didApplyInitialSize else {
                 return
@@ -54,6 +61,10 @@ private struct WindowSizeConfigurator: NSViewRepresentable {
             coordinator.didApplyInitialSize = true
 
             let currentSize = window.frame.size
+            let targetSize = NSSize(
+                width: min(max(currentSize.width, BrimWindowMetrics.defaultWidth), BrimWindowMetrics.maxWidth),
+                height: min(max(currentSize.height, BrimWindowMetrics.defaultHeight), BrimWindowMetrics.maxHeight)
+            )
 
             guard currentSize != targetSize else {
                 return
@@ -84,9 +95,6 @@ private struct BrimAppRootView: View {
     var body: some View {
         AccountSettingsView(route: route)
             .environmentObject(store)
-            .onAppear {
-                NSApplication.shared.applicationIconImage = NSImage(named: "BrimLogo")
-            }
             .onOpenURL { url in
                 route = AppRoute.parse(url)
             }

@@ -76,7 +76,7 @@ public struct QuotaAccountSlotView: View {
             return ""
         }
 
-        return isTextHidden ? "***" : "\(QuotaFormatting.sessionWindowLabel(for: account)) / \(QuotaFormatting.minutes(account.weeklyLimitMinutes))"
+        return isTextHidden ? "***" : QuotaFormatting.windowLine(for: account)
     }
 }
 

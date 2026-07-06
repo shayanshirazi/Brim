@@ -1,8 +1,35 @@
+import Darwin
 import Foundation
 
 public enum QuotaFormatting {
+    public static var userHomeDirectoryPath: String {
+        if let home = NSHomeDirectoryForUser(NSUserName()), !home.isEmpty {
+            return home
+        }
+
+        if
+            let passwd = getpwuid(getuid()),
+            let home = passwd.pointee.pw_dir
+        {
+            return String(cString: home)
+        }
+
+        let sandboxHome = FileManager.default.homeDirectoryForCurrentUser.path
+        if let containerRange = sandboxHome.range(of: "/Library/Containers/") {
+            return String(sandboxHome[..<containerRange.lowerBound])
+        }
+
+        return sandboxHome
+    }
+
+    public static var applicationSupportDirectoryPath: String {
+        let directory = FileManager.default.urls(for: .applicationSupportDirectory, in: .userDomainMask)
+            .first ?? FileManager.default.homeDirectoryForCurrentUser.appendingPathComponent("Library/Application Support", isDirectory: true)
+        return directory.appendingPathComponent("Brim", isDirectory: true).path
+    }
+
     public static func percentText(_ fraction: Double) -> String {
-        "\(Int(round(fraction * 100)))%"
+        return "\(Int(round(fraction * 100)))%"
     }
 
     public static func minutes(_ minutes: Int) -> String {
@@ -20,12 +47,53 @@ public enum QuotaFormatting {
         return "\(hours)h \(remainder)m"
     }
 
+    public static func windowDuration(_ minutes: Int) -> String {
+        let days = minutes / (24 * 60)
+        let dayRemainder = minutes % (24 * 60)
+
+        if days > 0, dayRemainder == 0 {
+            return "\(days)d"
+        }
+
+        if days > 0 {
+            return "\(days)d \(Self.minutes(dayRemainder))"
+        }
+
+        return Self.minutes(minutes)
+    }
+
+    public static func usageLimitTitle(minutes: Int) -> String {
+        if minutes % (24 * 60) == 0 {
+            let days = max(1, minutes / (24 * 60))
+            return "\(days) day usage limit"
+        }
+
+        if minutes % 60 == 0 {
+            let hours = max(1, minutes / 60)
+            return "\(hours) hour usage limit"
+        }
+
+        return "\(windowDuration(minutes)) usage limit"
+    }
+
     public static func sessionWindowLabel(for account: QuotaAccount) -> String {
-        minutes(account.sessionLimit)
+        return windowDuration(account.sessionWindowMinutes)
     }
 
     public static func remainingLine(for account: QuotaAccount) -> String {
-        "\(sessionWindowLabel(for: account)) \(minutes(account.sessionRemainingMinutes)) left / weekly \(minutes(account.weeklyRemainingMinutes)) left"
+        guard account.hasUsageSnapshot else {
+            return "\(account.provider.displayName) connected"
+        }
+
+        if account.usesRateLimitPercentages {
+            return "Session \(account.sessionPercentText) left / weekly \(account.remainingPercentText) left"
+        }
+
+        return "\(sessionWindowLabel(for: account)) \(minutes(account.sessionRemainingMinutes)) left / weekly \(minutes(account.weeklyRemainingMinutes)) left"
+    }
+
+    public static func windowLine(for account: QuotaAccount) -> String {
+        "\(windowDuration(account.sessionWindowMinutes)) / \(windowDuration(account.weeklyWindowMinutes)) windows"
     }
 
     public static func resetText(for account: QuotaAccount) -> String {
@@ -97,12 +165,50 @@ public enum QuotaFormatting {
         return formatter.string(from: resetDate)
     }
 
-    public static func shellQuoted(_ value: String) -> String {
-        "'\(value.replacingOccurrences(of: "'", with: "'\\''"))'"
+    public static func resetDateLine(
+        resetAt: Date?,
+        fallback: Date? = nil,
+        unavailableText: String,
+        from now: Date = Date(),
+        calendar: Calendar = .current
+    ) -> String {
+        guard let resetDate = resetAt ?? fallback else {
+            return unavailableText
+        }
+
+        let timeFormatter = DateFormatter()
+        timeFormatter.calendar = calendar
+        timeFormatter.locale = .current
+        timeFormatter.dateFormat = "h:mm a"
+
+        let dateFormatter = DateFormatter()
+        dateFormatter.calendar = calendar
+        dateFormatter.locale = .current
+        dateFormatter.dateFormat = "EEE, h:mm a"
+
+        if calendar.isDate(resetDate, inSameDayAs: now) {
+            return "Resets today \(timeFormatter.string(from: resetDate))"
+        }
+
+        if let tomorrow = calendar.date(byAdding: .day, value: 1, to: now),
+           calendar.isDate(resetDate, inSameDayAs: tomorrow) {
+            return "Resets tomorrow \(timeFormatter.string(from: resetDate))"
+        }
+
+        return "Resets \(dateFormatter.string(from: resetDate))"
     }
 
     public static func expandedHomePath(_ path: String) -> String {
-        let home = FileManager.default.homeDirectoryForCurrentUser.path
+        let home = userHomeDirectoryPath
+        let applicationSupport = applicationSupportDirectoryPath
+
+        if path == "$APP_SUPPORT" {
+            return applicationSupport
+        }
+
+        if path.hasPrefix("$APP_SUPPORT/") {
+            return applicationSupport + String(path.dropFirst("$APP_SUPPORT".count))
+        }
 
         if path == "$HOME" {
             return home
@@ -123,11 +229,6 @@ public enum QuotaFormatting {
         return path
     }
 
-    public static func codexCommand(path: String, subcommand: String? = nil) -> String {
-        let suffix = subcommand.map { " \($0)" } ?? ""
-        return "CODEX_HOME=\(shellQuoted(expandedHomePath(path))) codex\(suffix)"
-    }
-
     public static func emailAddress(in text: String) -> String? {
         let pattern = #"[A-Z0-9._%+-]+@[A-Z0-9.-]+\.[A-Z]{2,}"#
         guard let range = text.range(of: pattern, options: [.regularExpression, .caseInsensitive]) else {
@@ -140,26 +241,65 @@ public enum QuotaFormatting {
 
 public extension QuotaAccount {
     var remainingPercentText: String {
-        QuotaFormatting.percentText(weeklyRemainingFraction)
+        guard hasUsageSnapshot, !refreshStatus.hidesQuotaDetails else {
+            return "-"
+        }
+
+        return QuotaFormatting.percentText(weeklyRemainingFraction)
     }
 
     var sessionPercentText: String {
-        QuotaFormatting.percentText(sessionRemainingFraction)
+        guard hasUsageSnapshot, !refreshStatus.hidesQuotaDetails else {
+            return "-"
+        }
+
+        return QuotaFormatting.percentText(sessionRemainingFraction)
+    }
+
+    var usageSummaryText: String {
+        guard !refreshStatus.hidesQuotaDetails else {
+            return refreshStatus.title.lowercased()
+        }
+
+        if hasExhaustedQuota {
+            return "exhausted"
+        }
+
+        return hasUsageSnapshot ? "\(remainingPercentText) remaining" : "usage unavailable"
     }
 
     var resetText: String {
-        QuotaFormatting.resetText(for: self)
+        return QuotaFormatting.resetText(for: self)
     }
 
     func weeklyResetRelativeText(from now: Date = Date(), calendar: Calendar = .current) -> String {
-        QuotaFormatting.weeklyResetRelativeText(for: self, from: now, calendar: calendar)
+        return QuotaFormatting.weeklyResetRelativeText(for: self, from: now, calendar: calendar)
     }
 
     func weeklyResetDateText(from now: Date = Date(), calendar: Calendar = .current) -> String {
-        QuotaFormatting.weeklyResetDateText(for: self, from: now, calendar: calendar)
+        return QuotaFormatting.weeklyResetDateText(for: self, from: now, calendar: calendar)
+    }
+
+    func sessionResetLine(from now: Date = Date(), calendar: Calendar = .current) -> String {
+        return QuotaFormatting.resetDateLine(
+            resetAt: sessionResetAt,
+            unavailableText: "Rolling \(QuotaFormatting.windowDuration(sessionWindowMinutes)) window",
+            from: now,
+            calendar: calendar
+        )
+    }
+
+    func weeklyResetLine(from now: Date = Date(), calendar: Calendar = .current) -> String {
+        return QuotaFormatting.resetDateLine(
+            resetAt: weeklyResetAt,
+            fallback: QuotaFormatting.nextWeeklyResetDate(for: self, from: now, calendar: calendar),
+            unavailableText: "Reset date unavailable",
+            from: now,
+            calendar: calendar
+        )
     }
 }
 
 public func formatMinutes(_ minutes: Int) -> String {
-    QuotaFormatting.minutes(minutes)
+    return QuotaFormatting.minutes(minutes)
 }

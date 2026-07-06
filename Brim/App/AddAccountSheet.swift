@@ -1,0 +1,198 @@
+import SwiftUI
+
+struct AddAccountCreationMode: Identifiable, Hashable {
+    var provider: QuotaProviderKind
+    var connectionKind: QuotaConnectionKind
+    var title: String
+    var subtitle: String
+    var detail: String
+    var fallbackSystemImage: String
+
+    var id: String {
+        "\(provider.rawValue)-\(connectionKind.title)"
+    }
+
+    var logoAssetName: String? {
+        provider.logoAssetName
+    }
+
+    var accentHex: String {
+        provider.brandColorHex
+    }
+
+    static var available: [AddAccountCreationMode] {
+        QuotaProviderKind.allCases.flatMap { $0.accountCreationModes }
+    }
+}
+
+private extension QuotaProviderKind {
+    var accountCreationModes: [AddAccountCreationMode] {
+        switch self {
+        case .codex:
+            return [
+                AddAccountCreationMode(
+                    provider: self,
+                    connectionKind: .login,
+                    title: "Codex",
+                    subtitle: "Use Codex login",
+                    detail: "Track the Codex session already signed in on this Mac.",
+                    fallbackSystemImage: "terminal.fill"
+                )
+            ]
+        }
+    }
+}
+
+struct AddAccountSheet: View {
+    @Environment(\.dismiss) private var dismiss
+
+    var createAccount: (AddAccountCreationMode) -> Void
+
+    private let modes = AddAccountCreationMode.available
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 22) {
+            HStack(alignment: .top, spacing: 14) {
+                HStack(alignment: .center, spacing: 16) {
+                    AddAccountMark()
+
+                    VStack(alignment: .leading, spacing: 6) {
+                        Text("Add account")
+                            .font(.system(size: 26, weight: .bold, design: .rounded))
+                        Text("Choose what Brim should track first. More modes can join this list later.")
+                            .font(.system(size: 13, weight: .medium, design: .rounded))
+                            .foregroundStyle(.secondary)
+                    }
+                }
+
+                Spacer(minLength: 12)
+
+                Button {
+                    dismiss()
+                } label: {
+                    Image(systemName: "xmark")
+                        .font(.system(size: 12, weight: .bold))
+                        .foregroundStyle(.secondary)
+                        .frame(width: 30, height: 30)
+                        .background(Color.primary.opacity(0.055), in: Circle())
+                }
+                .buttonStyle(.plain)
+                .help("Close")
+                .accessibilityLabel("Close")
+            }
+
+            VStack(spacing: 12) {
+                ForEach(modes) { mode in
+                    AddAccountOptionButton(
+                        mode: mode,
+                        action: { createAccount(mode) }
+                    )
+                }
+            }
+        }
+        .padding(24)
+        .frame(width: 520)
+        .background(Color(nsColor: .windowBackgroundColor))
+    }
+}
+
+private struct AddAccountMark: View {
+    var body: some View {
+        ZStack {
+            RoundedRectangle(cornerRadius: 12, style: .continuous)
+                .fill(Color(hex: "#2CCB68").opacity(0.10))
+                .overlay {
+                    RoundedRectangle(cornerRadius: 12, style: .continuous)
+                        .stroke(Color(hex: "#2CCB68").opacity(0.18), lineWidth: 1)
+                }
+
+            Circle()
+                .fill(Color(hex: "#2CCB68"))
+                .frame(width: 26, height: 26)
+                .shadow(color: Color(hex: "#2CCB68").opacity(0.22), radius: 8, y: 3)
+
+            Image(systemName: "plus")
+                .font(.system(size: 15, weight: .black))
+                .foregroundStyle(.white)
+                .offset(y: -0.5)
+        }
+        .frame(width: 46, height: 46)
+        .accessibilityLabel("Add account")
+    }
+}
+
+private struct AddAccountOptionButton: View {
+    var mode: AddAccountCreationMode
+    var action: () -> Void
+
+    private var accent: Color {
+        Color(hex: mode.accentHex)
+    }
+
+    var body: some View {
+        Button(action: action) {
+            HStack(alignment: .top, spacing: 14) {
+                ProviderModeMark(mode: mode)
+
+                VStack(alignment: .leading, spacing: 5) {
+                    Text(mode.title)
+                        .font(.system(size: 17, weight: .bold, design: .rounded))
+
+                    Text(mode.subtitle)
+                        .font(.system(size: 12, weight: .bold, design: .rounded))
+                        .foregroundStyle(accent)
+
+                    Text(mode.detail)
+                        .font(.system(size: 12, weight: .medium, design: .rounded))
+                        .foregroundStyle(.secondary)
+                        .fixedSize(horizontal: false, vertical: true)
+                }
+
+                Spacer(minLength: 0)
+            }
+            .frame(maxWidth: .infinity, minHeight: 108, alignment: .topLeading)
+            .padding(16)
+            .background(
+                LinearGradient(
+                    colors: [accent.opacity(0.12), Color.primary.opacity(0.035)],
+                    startPoint: .topLeading,
+                    endPoint: .bottomTrailing
+                ),
+                in: RoundedRectangle(cornerRadius: 14, style: .continuous)
+            )
+            .overlay {
+                RoundedRectangle(cornerRadius: 14, style: .continuous)
+                    .stroke(accent.opacity(0.22), lineWidth: 1)
+            }
+        }
+        .buttonStyle(.plain)
+    }
+}
+
+private struct ProviderModeMark: View {
+    var mode: AddAccountCreationMode
+
+    private var accent: Color {
+        Color(hex: mode.accentHex)
+    }
+
+    var body: some View {
+        ZStack {
+            if let logoAssetName = mode.logoAssetName {
+                Image(logoAssetName)
+                    .resizable()
+                    .scaledToFit()
+                    .frame(width: 42, height: 42)
+                    .shadow(color: accent.opacity(0.22), radius: 12, y: 5)
+            } else {
+                Image(systemName: mode.fallbackSystemImage)
+                    .font(.system(size: 24, weight: .semibold))
+                    .foregroundStyle(accent)
+                    .frame(width: 42, height: 42)
+                    .background(accent.opacity(0.14), in: Circle())
+            }
+        }
+        .frame(width: 44, height: 44)
+        .accessibilityHidden(true)
+    }
+}

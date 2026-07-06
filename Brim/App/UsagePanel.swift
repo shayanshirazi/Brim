@@ -8,30 +8,39 @@ struct UsagePanel: View {
     }
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 14) {
-            PanelTitle(icon: "gauge.with.dots.needle.bottom.50percent", title: "Rate limits")
+        VStack(alignment: .leading, spacing: 12) {
+            PanelTitle(icon: "hourglass", title: "Rate limits")
 
-            VStack(spacing: 8) {
-                QuotaMetricRow(
-                    title: "Session",
-                    remaining: account.sessionRemainingMinutes,
-                    limit: account.sessionLimit,
-                    fraction: account.sessionRemainingFraction,
-                    color: Color(hex: account.colorHex)
-                )
+            if account.hasUsageSnapshot {
+                VStack(spacing: 8) {
+                    QuotaMetricRow(
+                        title: QuotaFormatting.usageLimitTitle(minutes: account.sessionWindowMinutes),
+                        resetLine: account.sessionResetLine(),
+                        fraction: account.sessionRemainingFraction,
+                        color: Color(hex: account.colorHex)
+                    )
 
-                QuotaMetricRow(
-                    title: "Weekly",
-                    remaining: account.weeklyRemainingMinutes,
-                    limit: account.weeklyLimitMinutes,
-                    fraction: account.weeklyRemainingFraction,
-                    color: Color(hex: account.colorHex)
-                )
+                    QuotaMetricRow(
+                        title: "Weekly usage limit",
+                        resetLine: account.weeklyResetLine(),
+                        fraction: account.weeklyRemainingFraction,
+                        color: Color(hex: account.colorHex)
+                    )
+                }
+                .blur(radius: isQuotaRedacted ? 3.8 : 0)
+                .saturation(isQuotaRedacted ? 0.18 : 1)
+                .opacity(isQuotaRedacted ? 0.58 : 1)
+                .animation(.snappy(duration: 0.18), value: isQuotaRedacted)
+            } else {
+                UsageUnavailableState(providerName: account.provider.displayName)
+                    .frame(maxWidth: .infinity, minHeight: 154, alignment: .center)
             }
-            .blur(radius: isQuotaRedacted ? 3.8 : 0)
-            .saturation(isQuotaRedacted ? 0.18 : 1)
-            .opacity(isQuotaRedacted ? 0.58 : 1)
-            .animation(.snappy(duration: 0.18), value: isQuotaRedacted)
+
+            Spacer(minLength: account.hasUsageSnapshot ? 0 : 8)
+
+            if let usageURL = account.provider.usageURL {
+                UsageDashboardLink(providerName: account.provider.displayName, url: usageURL)
+            }
 
             Divider()
                 .opacity(0.28)
@@ -45,26 +54,94 @@ struct UsagePanel: View {
             }
         }
         .frame(maxHeight: .infinity, alignment: .top)
-        .panelStyle()
+    }
+}
+
+private struct UsageDashboardLink: View {
+    var providerName: String
+    var url: URL
+
+    var body: some View {
+        Link(destination: url) {
+            HStack(spacing: 6) {
+                Image(systemName: "checkmark.seal")
+                    .font(.system(size: 11, weight: .semibold))
+
+                Text("Verify in \(providerName)")
+                    .font(.system(size: 11, weight: .bold, design: .rounded))
+
+                Image(systemName: "arrow.up.right")
+                    .font(.system(size: 9, weight: .bold))
+                    .opacity(0.72)
+            }
+            .foregroundStyle(.secondary)
+            .padding(.horizontal, 10)
+            .frame(height: 28)
+            .background(Color.primary.opacity(0.026), in: Capsule())
+            .overlay {
+                Capsule()
+                    .stroke(Color.primary.opacity(0.055), lineWidth: 1)
+            }
+            .contentShape(Capsule())
+        }
+        .buttonStyle(.plain)
+        .frame(maxWidth: .infinity, alignment: .center)
+        .help("Open the \(providerName) usage dashboard")
+    }
+}
+
+private struct UsageUnavailableState: View {
+    var providerName: String
+
+    var body: some View {
+        VStack(spacing: 10) {
+            ZStack {
+                Circle()
+                    .fill(Color(hex: "#54C7EC").opacity(0.12))
+                    .frame(width: 44, height: 44)
+
+                Circle()
+                    .stroke(Color(hex: "#54C7EC").opacity(0.16), lineWidth: 1)
+                    .frame(width: 44, height: 44)
+
+                Image(systemName: "waveform.path.ecg")
+                    .font(.system(size: 19, weight: .bold))
+                    .foregroundStyle(Color(hex: "#54C7EC"))
+            }
+
+            VStack(spacing: 5) {
+                Text("Usage not available")
+                    .font(.system(size: 14, weight: .bold, design: .rounded))
+
+                Text("\(providerName) is connected, but Brim has not received live rate-limit data yet.")
+                    .font(.system(size: 12, weight: .medium, design: .rounded))
+                    .foregroundStyle(.secondary)
+                    .multilineTextAlignment(.center)
+                    .fixedSize(horizontal: false, vertical: true)
+            }
+        }
+        .padding(.horizontal, 22)
+        .frame(maxWidth: 238)
     }
 }
 
 private struct QuotaMetricRow: View {
     var title: String
-    var remaining: Int
-    var limit: Int
+    var resetLine: String
     var fraction: Double
     var color: Color
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 7) {
+        VStack(alignment: .leading, spacing: 8) {
             HStack {
                 Text(title)
                     .font(.system(size: 12, weight: .bold, design: .rounded))
+                    .lineLimit(1)
+                    .minimumScaleFactor(0.82)
 
                 Spacer()
 
-                Text("\(QuotaFormatting.minutes(remaining)) left")
+                Text("\(QuotaFormatting.percentText(fraction)) left")
                     .font(.system(size: 12, weight: .semibold, design: .monospaced))
                     .foregroundStyle(.secondary)
             }
@@ -72,12 +149,14 @@ private struct QuotaMetricRow: View {
             ProgressView(value: fraction)
                 .tint(color)
 
-            Text("Limit \(QuotaFormatting.minutes(limit))")
+            Text(resetLine)
                 .font(.system(size: 10, weight: .medium, design: .rounded))
                 .foregroundStyle(.secondary)
+                .lineLimit(1)
+                .minimumScaleFactor(0.82)
         }
         .padding(.horizontal, 11)
-        .padding(.vertical, 10)
+        .padding(.vertical, 11)
         .background(Color.primary.opacity(0.035), in: RoundedRectangle(cornerRadius: 9, style: .continuous))
     }
 }
@@ -86,11 +165,7 @@ private struct RingColorControl: View {
     @Binding var colorHex: String
     @State private var showsPalette = false
 
-    private let swatches = [
-        "#D7EA48", "#40E06B", "#65D6FF", "#4F8CFF",
-        "#8B6CFF", "#F45EE5", "#FF5A66", "#FFB33F",
-        "#8BD56B", "#37D6B8", "#7CA1FF", "#D48CFF"
-    ]
+    private let presetSwatches = QuotaAccountDefaults.presetColorHexes
 
     var body: some View {
         Button {
@@ -123,8 +198,8 @@ private struct RingColorControl: View {
         .buttonStyle(.plain)
         .popover(isPresented: $showsPalette, arrowEdge: .trailing) {
             RingColorPalette(
-                selectedHex: colorHex,
-                swatches: swatches,
+                colorHex: $colorHex,
+                swatches: presetSwatches,
                 select: { hex in
                     colorHex = QuotaColor.normalizedHex(hex) ?? QuotaColor.fallbackHex
                     showsPalette = false
@@ -135,11 +210,15 @@ private struct RingColorControl: View {
 }
 
 private struct RingColorPalette: View {
-    var selectedHex: String
+    @Binding var colorHex: String
     var swatches: [String]
     var select: (String) -> Void
+    @StateObject private var colorPanel = RingColorPanelController()
 
     private let columns = Array(repeating: GridItem(.fixed(30), spacing: 8), count: 4)
+    private var isCustomColorSelected: Bool {
+        !swatches.contains { QuotaColor.normalizedHex($0) == QuotaColor.normalizedHex(colorHex) }
+    }
 
     var body: some View {
         VStack(alignment: .leading, spacing: 12) {
@@ -173,6 +252,19 @@ private struct RingColorPalette: View {
                     }
                     .buttonStyle(.plain)
                 }
+
+                Button {
+                    colorPanel.open(initialHex: colorHex) { selectedHex in
+                        colorHex = selectedHex
+                    }
+                } label: {
+                    CustomColorSwatch(
+                        color: Color(hex: colorHex),
+                        isSelected: isCustomColorSelected
+                    )
+                }
+                .buttonStyle(.plain)
+                .help("Choose custom colour")
             }
         }
         .padding(14)
@@ -180,6 +272,82 @@ private struct RingColorPalette: View {
     }
 
     private func isSelected(_ hex: String) -> Bool {
-        QuotaColor.normalizedHex(hex) == QuotaColor.normalizedHex(selectedHex)
+        QuotaColor.normalizedHex(hex) == QuotaColor.normalizedHex(colorHex)
+    }
+}
+
+private final class RingColorPanelController: NSObject, ObservableObject {
+    private var onChange: ((String) -> Void)?
+
+    func open(initialHex: String, onChange: @escaping (String) -> Void) {
+        self.onChange = onChange
+
+        let panel = NSColorPanel.shared
+        panel.setTarget(self)
+        panel.setAction(#selector(colorDidChange(_:)))
+        panel.showsAlpha = false
+        panel.isContinuous = true
+        panel.color = NSColor(Color(hex: initialHex))
+        panel.makeKeyAndOrderFront(nil)
+        NSApp.activate(ignoringOtherApps: true)
+    }
+
+    @objc private func colorDidChange(_ sender: NSColorPanel) {
+        guard let color = sender.color.usingColorSpace(.sRGB) else {
+            return
+        }
+
+        let hex = String(
+            format: "#%02X%02X%02X",
+            Int(round(color.redComponent * 255)),
+            Int(round(color.greenComponent * 255)),
+            Int(round(color.blueComponent * 255))
+        )
+        onChange?(hex)
+    }
+}
+
+private struct CustomColorSwatch: View {
+    var color: Color
+    var isSelected: Bool
+
+    var body: some View {
+        Circle()
+            .fill(
+                AngularGradient(
+                    colors: [
+                        Color(hex: "#FF5A66"),
+                        Color(hex: "#FFB33F"),
+                        Color(hex: "#40E06B"),
+                        Color(hex: "#65D6FF"),
+                        Color(hex: "#8B6CFF"),
+                        Color(hex: "#FF5A66")
+                    ],
+                    center: .center
+                )
+            )
+            .frame(width: 30, height: 30)
+            .overlay {
+                Circle()
+                    .fill(color)
+                    .frame(width: 18, height: 18)
+                    .overlay {
+                        Circle()
+                            .stroke(Color.white.opacity(0.82), lineWidth: 1)
+                    }
+            }
+            .overlay {
+                Image(systemName: "eyedropper.halffull")
+                    .font(.system(size: 10, weight: .bold))
+                    .foregroundStyle(.white)
+                    .shadow(radius: 2)
+            }
+            .overlay {
+                Circle()
+                    .stroke(
+                        isSelected ? Color.primary.opacity(0.72) : Color.primary.opacity(0.10),
+                        lineWidth: isSelected ? 2 : 1
+                    )
+            }
     }
 }

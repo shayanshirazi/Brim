@@ -9,9 +9,13 @@ struct AccountSidebar: View {
     var moveAccounts: (IndexSet, Int) -> Void
     var renameAccount: (QuotaAccount.ID, String) -> Void
     var selectAccount: (QuotaAccount.ID) -> Void
+    var isSettingsSelected: Bool = false
+    var openSettings: () -> Void = {}
 
     @State private var draggingAccountID: QuotaAccount.ID?
+    @State private var dropTargetAccountID: QuotaAccount.ID?
     @State private var renamingAccountID: QuotaAccount.ID?
+    @State private var accountPendingRemoval: QuotaAccount?
     @State private var draftName = ""
 
     var body: some View {
@@ -20,20 +24,25 @@ struct AccountSidebar: View {
                 HStack(spacing: 12) {
                     BrimLogoMark(size: 38)
 
-                    Text("Brim")
-                        .font(.system(size: 28, weight: .black, design: .rounded))
-                        .lineLimit(1)
-                        .minimumScaleFactor(0.86)
+                    HStack(alignment: .top, spacing: 5) {
+                        Text("Brim")
+                            .font(.system(size: 28, weight: .black, design: .rounded))
+                            .lineLimit(1)
+                            .minimumScaleFactor(0.86)
+
+                        BrimVersionBadge()
+                            .padding(.top, 2)
+                    }
                 }
 
                 Spacer()
 
                 Button(action: addAccount) {
                     Image(systemName: "plus")
-                        .font(.system(size: 18, weight: .semibold))
-                        .foregroundStyle(.primary.opacity(0.76))
-                        .frame(width: 36, height: 36)
-                        .background(Color.primary.opacity(0.055), in: Circle())
+                        .font(.system(size: 15, weight: .semibold))
+                        .foregroundStyle(.primary.opacity(0.68))
+                        .frame(width: 32, height: 32)
+                        .background(Color.primary.opacity(0.045), in: Circle())
                 }
                 .buttonStyle(.plain)
                 .help("Add account")
@@ -49,6 +58,7 @@ struct AccountSidebar: View {
                             account: account,
                             isSelected: selectedAccountID == account.id,
                             isDragging: draggingAccountID == account.id,
+                            isDropTarget: dropTargetAccountID == account.id && draggingAccountID != account.id,
                             isRenaming: renamingAccountID == account.id,
                             draftName: $draftName,
                             selectAccount: {
@@ -63,12 +73,18 @@ struct AccountSidebar: View {
                                 commitRename(for: account.id)
                             },
                             removeAccount: {
-                                removeAccount(account.id)
+                                requestRemoval(of: account)
                             }
                         )
                         .onDrag {
-                            draggingAccountID = account.id
+                            withAnimation(.interactiveSpring(response: 0.24, dampingFraction: 0.84)) {
+                                draggingAccountID = account.id
+                                dropTargetAccountID = nil
+                            }
+                            selectAccount(account.id)
                             return NSItemProvider(object: account.id.uuidString as NSString)
+                        } preview: {
+                            AccountSidebarDragPreview(account: account)
                         }
                         .onDrop(
                             of: [UTType.text],
@@ -76,6 +92,7 @@ struct AccountSidebar: View {
                                 targetAccount: account,
                                 accounts: accounts,
                                 draggingAccountID: $draggingAccountID,
+                                dropTargetAccountID: $dropTargetAccountID,
                                 moveAccounts: moveAccounts
                             )
                         )
@@ -83,7 +100,15 @@ struct AccountSidebar: View {
                 }
                 .padding(.horizontal, 12)
                 .padding(.bottom, 12)
+                .animation(.interactiveSpring(response: 0.28, dampingFraction: 0.86), value: accounts.map(\.id))
             }
+
+            SidebarSettingsButton(
+                isSelected: isSettingsSelected,
+                action: openSettings
+            )
+            .padding(.horizontal, 12)
+            .padding(.bottom, 14)
         }
         .background(
             LinearGradient(
@@ -95,6 +120,41 @@ struct AccountSidebar: View {
                 endPoint: .bottom
             )
         )
+        .alert(
+            "Delete \(accountPendingRemoval?.name ?? "account")?",
+            isPresented: removalConfirmationBinding,
+            presenting: accountPendingRemoval
+        ) { account in
+            Button("Delete account", role: .destructive) {
+                confirmRemoval(of: account)
+            }
+
+            Button("Cancel", role: .cancel) {
+                accountPendingRemoval = nil
+            }
+        } message: { account in
+            Text("This removes \(account.name) from Brim. If this account has an API token, Brim removes it from Keychain.")
+        }
+    }
+
+    private var removalConfirmationBinding: Binding<Bool> {
+        Binding(
+            get: { accountPendingRemoval != nil },
+            set: { isPresented in
+                if !isPresented {
+                    accountPendingRemoval = nil
+                }
+            }
+        )
+    }
+
+    private func requestRemoval(of account: QuotaAccount) {
+        accountPendingRemoval = account
+    }
+
+    private func confirmRemoval(of account: QuotaAccount) {
+        removeAccount(account.id)
+        accountPendingRemoval = nil
     }
 
     private func commitRename(for accountID: QuotaAccount.ID) {
@@ -108,10 +168,38 @@ struct AccountSidebar: View {
     }
 }
 
+private struct SidebarSettingsButton: View {
+    var isSelected: Bool
+    var action: () -> Void
+
+    var body: some View {
+        Button(action: action) {
+            HStack(spacing: 11) {
+                SettingsGearMark(size: 32, isSelected: isSelected)
+
+                Text("Settings")
+                    .font(.system(size: 13, weight: .bold, design: .rounded))
+                    .foregroundStyle(isSelected ? .primary : .secondary)
+
+                Spacer()
+            }
+            .padding(.horizontal, 12)
+            .padding(.vertical, 9)
+            .background(
+                isSelected ? Color.primary.opacity(0.075) : Color.clear,
+                in: RoundedRectangle(cornerRadius: 12, style: .continuous)
+            )
+        }
+        .buttonStyle(.plain)
+        .help("Open settings")
+    }
+}
+
 private struct AccountSidebarRow: View {
     var account: QuotaAccount
     var isSelected: Bool
     var isDragging: Bool
+    var isDropTarget: Bool
     var isRenaming: Bool
     @Binding var draftName: String
     var selectAccount: () -> Void
@@ -147,7 +235,7 @@ private struct AccountSidebarRow: View {
                                 .lineLimit(1)
                         }
 
-                        Text("\(account.remainingPercentText) remaining")
+                        Text(account.usageSummaryText)
                             .font(.system(size: 11, weight: .medium, design: .monospaced))
                             .foregroundStyle(.secondary)
                             .blur(radius: account.refreshStatus.hidesQuotaDetails ? 2.6 : 0)
@@ -159,8 +247,10 @@ private struct AccountSidebarRow: View {
                     Spacer(minLength: 0)
                 }
                 .frame(maxWidth: .infinity, alignment: .leading)
+                .contentShape(Rectangle())
             }
             .buttonStyle(.plain)
+            .accessibilityLabel("Select \(account.name)")
 
             Button(action: removeAccount) {
                 Image(systemName: "minus")
@@ -175,10 +265,22 @@ private struct AccountSidebarRow: View {
         .padding(.horizontal, 12)
         .padding(.vertical, 10)
         .background(
-            isSelected ? Color.primary.opacity(0.075) : Color.clear,
+            rowBackground,
             in: RoundedRectangle(cornerRadius: 12, style: .continuous)
         )
-        .opacity(isDragging ? 0.55 : 1)
+        .overlay {
+            RoundedRectangle(cornerRadius: 12, style: .continuous)
+                .stroke(rowStroke, lineWidth: isDropTarget ? 1.2 : 0)
+        }
+        .scaleEffect(isDragging ? 0.985 : 1)
+        .opacity(isDragging ? 0.32 : 1)
+        .shadow(
+            color: isDropTarget ? Color(hex: account.colorHex).opacity(0.14) : Color.clear,
+            radius: isDropTarget ? 10 : 0,
+            y: isDropTarget ? 4 : 0
+        )
+        .animation(.interactiveSpring(response: 0.24, dampingFraction: 0.88), value: isDragging)
+        .animation(.interactiveSpring(response: 0.24, dampingFraction: 0.88), value: isDropTarget)
         .contentShape(RoundedRectangle(cornerRadius: 12, style: .continuous))
         .contextMenu {
             Button(action: beginRename) {
@@ -186,7 +288,7 @@ private struct AccountSidebarRow: View {
             }
 
             Button(role: .destructive, action: removeAccount) {
-                Label("Delete", systemImage: "trash")
+                Label("Delete Account", systemImage: "trash")
             }
         }
         .onChange(of: isRenaming) { _, newValue in
@@ -204,12 +306,57 @@ private struct AccountSidebarRow: View {
             }
         }
     }
+
+    private var rowBackground: Color {
+        if isDropTarget {
+            return Color(hex: account.colorHex).opacity(0.085)
+        }
+
+        return isSelected ? Color.primary.opacity(0.075) : Color.clear
+    }
+
+    private var rowStroke: Color {
+        isDropTarget ? Color(hex: account.colorHex).opacity(0.22) : Color.clear
+    }
+}
+
+private struct AccountSidebarDragPreview: View {
+    var account: QuotaAccount
+
+    var body: some View {
+        HStack(spacing: 11) {
+            QuotaRingView(account: account, diameter: 32, lineWidth: 4, showPercent: false)
+
+            VStack(alignment: .leading, spacing: 2) {
+                Text(account.name)
+                    .font(.system(size: 13, weight: .bold, design: .rounded))
+                    .lineLimit(1)
+
+                Text(account.usageSummaryText)
+                    .font(.system(size: 11, weight: .medium, design: .monospaced))
+                    .foregroundStyle(.secondary)
+                    .lineLimit(1)
+            }
+
+            Spacer(minLength: 0)
+        }
+        .frame(width: 190, alignment: .leading)
+        .padding(.horizontal, 12)
+        .padding(.vertical, 10)
+        .background(.regularMaterial, in: RoundedRectangle(cornerRadius: 13, style: .continuous))
+        .overlay {
+            RoundedRectangle(cornerRadius: 13, style: .continuous)
+                .stroke(Color(hex: account.colorHex).opacity(0.18), lineWidth: 1)
+        }
+        .shadow(color: Color.black.opacity(0.16), radius: 16, y: 8)
+    }
 }
 
 private struct AccountSidebarDropDelegate: DropDelegate {
     var targetAccount: QuotaAccount
     var accounts: [QuotaAccount]
     @Binding var draggingAccountID: QuotaAccount.ID?
+    @Binding var dropTargetAccountID: QuotaAccount.ID?
     var moveAccounts: (IndexSet, Int) -> Void
 
     func dropEntered(info: DropInfo) {
@@ -222,8 +369,9 @@ private struct AccountSidebarDropDelegate: DropDelegate {
             return
         }
 
+        dropTargetAccountID = targetAccount.id
         let destination = toIndex > fromIndex ? toIndex + 1 : toIndex
-        withAnimation(.snappy(duration: 0.16)) {
+        withAnimation(.interactiveSpring(response: 0.28, dampingFraction: 0.86)) {
             moveAccounts(IndexSet(integer: fromIndex), destination)
         }
     }
@@ -232,8 +380,17 @@ private struct AccountSidebarDropDelegate: DropDelegate {
         DropProposal(operation: .move)
     }
 
+    func dropExited(info: DropInfo) {
+        if dropTargetAccountID == targetAccount.id {
+            dropTargetAccountID = nil
+        }
+    }
+
     func performDrop(info: DropInfo) -> Bool {
-        draggingAccountID = nil
+        withAnimation(.interactiveSpring(response: 0.24, dampingFraction: 0.9)) {
+            draggingAccountID = nil
+            dropTargetAccountID = nil
+        }
         return true
     }
 }

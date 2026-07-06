@@ -1,70 +1,72 @@
 import AppKit
 import SwiftUI
 
-struct CodexProfilePanel: View {
+struct ProviderProfilePanel: View {
+    @EnvironmentObject private var store: QuotaStore
     @Binding var account: QuotaAccount
-    @Binding var codexProfilePath: String
-    @Binding var copiedCommand: CopiedCommand?
+    @Binding var profilePath: String
     @State private var apiToken = ""
     @State private var selectedConnectionKind: QuotaConnectionKind
-    @State private var loginFlowState: CodexLoginFlowState = .idle
+    @State private var loginFlowState: ProviderLoginFlowState = .idle
+    @State private var showsProfileLocation = false
+    @AppStorage(BrimRefreshInterval.storageKey) private var refreshIntervalSeconds = BrimRefreshInterval.defaultSeconds
+    var openPersonalizationSettings: () -> Void
 
     init(
         account: Binding<QuotaAccount>,
-        codexProfilePath: Binding<String>,
-        copiedCommand: Binding<CopiedCommand?>
+        profilePath: Binding<String>,
+        openPersonalizationSettings: @escaping () -> Void = {}
     ) {
         _account = account
-        _codexProfilePath = codexProfilePath
-        _copiedCommand = copiedCommand
+        _profilePath = profilePath
         _selectedConnectionKind = State(initialValue: account.wrappedValue.connectionKind)
-    }
-
-    private var loginCommand: String {
-        QuotaFormatting.codexCommand(path: codexProfilePath, subcommand: "login")
-    }
-
-    private var statusCommand: String {
-        QuotaFormatting.codexCommand(path: codexProfilePath, subcommand: "login status")
+        self.openPersonalizationSettings = openPersonalizationSettings
     }
 
     var body: some View {
         VStack(alignment: .leading, spacing: 16) {
             HStack {
-                PanelTitle(icon: "bolt.horizontal.circle", title: "Setup")
+                PanelTitle(icon: "key.fill", title: "Setup")
                 Spacer()
             }
 
-            HStack(spacing: 10) {
+            HStack(spacing: 8) {
                 ConnectionMethodButton(
-                    title: "Login with Codex",
+                    title: "Login",
                     icon: "person.crop.circle.badge.checkmark",
-                    isSelected: selectedConnectionKind == .codexLogin,
-                    color: Color(hex: account.colorHex),
-                    action: { selectConnectionTab(.codexLogin) }
+                    isSelected: selectedConnectionKind == .login,
+                    action: { selectConnectionTab(.login) }
                 )
 
                 ConnectionMethodButton(
                     title: "API token",
                     icon: "key.horizontal",
                     isSelected: selectedConnectionKind == .apiToken,
-                    color: Color(hex: "#54C7EC"),
                     action: { selectConnectionTab(.apiToken) }
                 )
             }
+            .padding(4)
+            .background(Color.primary.opacity(0.025), in: RoundedRectangle(cornerRadius: 12, style: .continuous))
 
             if selectedConnectionKind == .apiToken {
-                HStack(spacing: 10) {
+                VStack(alignment: .leading, spacing: 12) {
+                    ConnectionStatusRow(
+                        icon: "key.horizontal",
+                        title: "Use an API token",
+                        message: "Save a token in Keychain for this account.",
+                        state: .idle
+                    )
+
                     SecureField("API token", text: $apiToken)
                         .textFieldStyle(.plain)
                         .font(.system(size: 12, weight: .medium, design: .rounded))
-                        .padding(.horizontal, 11)
+                        .padding(.horizontal, 12)
                         .frame(maxWidth: .infinity)
-                        .frame(height: 34)
-                        .background(Color(nsColor: .textBackgroundColor), in: RoundedRectangle(cornerRadius: 8, style: .continuous))
+                        .frame(height: 38)
+                        .background(Color(nsColor: .textBackgroundColor), in: RoundedRectangle(cornerRadius: 10, style: .continuous))
 
                     APITokenButton(
-                        title: "Use token",
+                        title: "Save token",
                         icon: "checkmark.circle.fill",
                         isEnabled: !apiToken.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty,
                         action: saveAPIToken
@@ -73,73 +75,79 @@ struct CodexProfilePanel: View {
                 }
             } else {
                 VStack(alignment: .leading, spacing: 12) {
-                    CodexBrowserLoginCard(
+                    ProviderConnectionCard(
                         state: resolvedLoginFlowState,
-                        accountColor: Color(hex: account.colorHex),
-                        action: resolvedLoginFlowState == .connected ? checkCodexLogin : startCodexLogin
+                        provider: account.provider,
+                        primaryAction: resolvedLoginFlowState == .connected ? checkProviderLogin : startProviderLogin,
+                        logoutAction: confirmProviderLogout
                     )
 
-                    VStack(alignment: .leading, spacing: 8) {
-                        Text("Profile")
-                            .font(.system(size: 11, weight: .bold, design: .rounded))
-                            .foregroundStyle(.secondary)
-
-                        TextField("Profile path", text: $codexProfilePath)
-                            .textFieldStyle(.plain)
-                            .font(.system(size: 11, weight: .medium, design: .monospaced))
-                            .padding(.horizontal, 10)
-                            .frame(height: 32)
-                            .background(Color(nsColor: .textBackgroundColor), in: RoundedRectangle(cornerRadius: 8, style: .continuous))
-                    }
-
-                    HStack(spacing: 8) {
-                        SecondaryConnectionButton(
-                            title: "Check",
-                            icon: "checkmark.seal",
-                            action: checkCodexLogin
-                        )
-
-                        SecondaryConnectionButton(
-                            title: copiedCommand == .login ? "Copied" : "Copy login",
-                            icon: copiedCommand == .login ? "checkmark" : "doc.on.doc",
-                            action: { copy(loginCommand, command: .login) }
-                        )
-
-                        SecondaryConnectionButton(
-                            title: copiedCommand == .status ? "Copied" : "Copy check",
-                            icon: copiedCommand == .status ? "checkmark" : "doc.on.doc",
-                            action: { copy(statusCommand, command: .status) }
-                        )
-                    }
+                    profileLocationDisclosure
                 }
             }
 
             Spacer(minLength: 0)
 
-            HStack(spacing: 8) {
+            HStack(spacing: 7) {
                 Image(systemName: "arrow.triangle.2.circlepath")
-                    .foregroundStyle(Color(hex: account.colorHex))
-                Text("Refreshes every 5 min. Tokens stay in Keychain.")
-                    .font(.system(size: 11, weight: .medium, design: .rounded))
                     .foregroundStyle(.secondary)
+
+                Text("Every")
+                    .foregroundStyle(.secondary)
+
+                Button(action: openPersonalizationSettings) {
+                    Text(BrimRefreshInterval.displayTitle(for: refreshIntervalSeconds))
+                        .underline(true, color: .secondary)
+                }
+                .buttonStyle(.plain)
+                .foregroundStyle(.secondary)
+                .help("Change refresh frequency")
+
+                Spacer(minLength: 8)
+
+                Label("Keychain", systemImage: "lock.fill")
+                    .foregroundStyle(.secondary)
+                    .help("Tokens stay in Keychain.")
             }
+            .font(.system(size: 11, weight: .medium, design: .rounded))
+            .lineLimit(1)
+            .minimumScaleFactor(0.88)
+            .frame(height: 28, alignment: .center)
         }
-        .panelStyle()
+        .frame(maxHeight: .infinity, alignment: .topLeading)
         .onChange(of: account.id) { _, _ in
             selectedConnectionKind = account.connectionKind
             loginFlowState = .idle
+            showsProfileLocation = false
         }
         .onChange(of: account.connectionKind) { _, kind in
             selectedConnectionKind = kind
         }
     }
 
-    private var resolvedLoginFlowState: CodexLoginFlowState {
+    private var profileLocationDisclosure: some View {
+        DisclosureGroup(isExpanded: $showsProfileLocation) {
+            TextField("Profile path", text: $profilePath)
+                .textFieldStyle(.plain)
+                .font(.system(size: 11, weight: .medium, design: .monospaced))
+                .padding(.horizontal, 11)
+                .frame(height: 34)
+                .background(Color(nsColor: .textBackgroundColor), in: RoundedRectangle(cornerRadius: 9, style: .continuous))
+                .padding(.top, 8)
+        } label: {
+            Text("Profile location")
+                .font(.system(size: 11, weight: .bold, design: .rounded))
+                .foregroundStyle(.secondary)
+        }
+        .tint(.secondary)
+    }
+
+    private var resolvedLoginFlowState: ProviderLoginFlowState {
         if loginFlowState.isWorking {
             return loginFlowState
         }
 
-        guard account.connectionKind == .codexLogin else {
+        guard account.connectionKind == .login else {
             return .idle
         }
 
@@ -147,9 +155,9 @@ struct CodexProfilePanel: View {
         case .ready:
             return .connected
         case .waitingForQuotaSource:
-            return .checking
+            return account.hasUsageSnapshot ? .checking : .connected
         case .refreshFailed:
-            return .failed(account.refreshMessage ?? "Brim could not check the Codex session.")
+            return .failed(account.refreshMessage ?? "Brim could not check the \(account.provider.displayName) session.")
         case .notConnected, .manual:
             return .idle
         }
@@ -157,20 +165,23 @@ struct CodexProfilePanel: View {
 
     private func selectConnectionTab(_ kind: QuotaConnectionKind) {
         selectedConnectionKind = kind
-        copiedCommand = nil
     }
 
-    private func startCodexLogin() {
-        selectedConnectionKind = .codexLogin
-        account.connectionKind = .codexLogin
+    private func startProviderLogin() {
+        selectedConnectionKind = .login
+        account.connectionKind = .login
         loginFlowState = .openingBrowser
         account.refreshStatus = .waitingForQuotaSource
         account.lastRefreshAttemptAt = Date()
-        account.refreshMessage = "Opening Codex login in your browser."
+        account.refreshMessage = "Opening \(account.provider.displayName) login in your browser."
 
         Task {
-            let profilePath = QuotaFormatting.expandedHomePath(codexProfilePath)
-            let loginResult = await CodexCommandRunner.run(profilePath: profilePath, subcommand: "login")
+            let expandedProfilePath = QuotaFormatting.expandedHomePath(profilePath)
+            let loginResult = await CodexCommandRunner.run(
+                profilePath: expandedProfilePath,
+                subcommand: "login",
+                timeout: 300
+            )
 
             guard loginResult.exitCode == 0 else {
                 markLoginFailure(loginResult)
@@ -178,22 +189,67 @@ struct CodexProfilePanel: View {
             }
 
             loginFlowState = .checking
-            let statusResult = await CodexCommandRunner.run(profilePath: profilePath, subcommand: "login status")
-            applyLoginStatus(statusResult)
+            let statusResult = await CodexCommandRunner.run(profilePath: expandedProfilePath, subcommand: "login status")
+            if applyLoginStatus(statusResult) {
+                await store.refreshAccount(id: account.id)
+                loginFlowState = .connected
+            }
         }
     }
 
-    private func checkCodexLogin() {
-        selectedConnectionKind = .codexLogin
-        account.connectionKind = .codexLogin
+    private func checkProviderLogin() {
+        selectedConnectionKind = .login
+        account.connectionKind = .login
         loginFlowState = .checking
         account.refreshStatus = .waitingForQuotaSource
         account.lastRefreshAttemptAt = Date()
 
         Task {
-            let profilePath = QuotaFormatting.expandedHomePath(codexProfilePath)
-            let statusResult = await CodexCommandRunner.run(profilePath: profilePath, subcommand: "login status")
-            applyPingStatus(statusResult)
+            let expandedProfilePath = QuotaFormatting.expandedHomePath(profilePath)
+            let statusResult = await CodexCommandRunner.run(profilePath: expandedProfilePath, subcommand: "login status")
+            if applyPingStatus(statusResult) {
+                await store.refreshAccount(id: account.id)
+                loginFlowState = .connected
+            }
+        }
+    }
+
+    private func confirmProviderLogout() {
+        let alert = NSAlert()
+        alert.alertStyle = .warning
+        alert.messageText = "Log out of \(account.provider.displayName)?"
+        alert.informativeText = "This disconnects \(account.name) from Brim on this Mac. You can sign in again anytime."
+        alert.addButton(withTitle: "Log out")
+        alert.addButton(withTitle: "Cancel")
+
+        guard alert.runModal() == .alertFirstButtonReturn else {
+            return
+        }
+
+        logoutProvider()
+    }
+
+    private func logoutProvider() {
+        selectedConnectionKind = .login
+        account.connectionKind = .login
+        loginFlowState = .loggingOut
+        account.refreshStatus = .waitingForQuotaSource
+        account.refreshMessage = "Signing out of \(account.provider.displayName)."
+        account.lastRefreshAttemptAt = Date()
+
+        Task {
+            let expandedProfilePath = QuotaFormatting.expandedHomePath(profilePath)
+            let logoutResult = await CodexCommandRunner.run(profilePath: expandedProfilePath, subcommand: "logout", timeout: 60)
+
+            guard logoutResult.exitCode == 0 else {
+                markLoginFailure(logoutResult)
+                return
+            }
+
+            account = account.disconnectedProviderAccount(
+                message: "Sign in with \(account.provider.displayName) to connect this account."
+            )
+            loginFlowState = .idle
         }
     }
 
@@ -208,8 +264,9 @@ struct CodexProfilePanel: View {
             selectedConnectionKind = .apiToken
             account.connectionKind = .apiToken
             account.credentialID = credentialID
+            account.hasUsageSnapshot = false
             account.refreshStatus = .ready
-            account.refreshMessage = "API token saved in Keychain."
+            account.refreshMessage = "API token saved. Exact usage opens in \(account.provider.displayName)."
             account.lastRefreshAttemptAt = Date()
             account.lastSuccessfulRefreshAt = Date()
             apiToken = ""
@@ -222,48 +279,53 @@ struct CodexProfilePanel: View {
         }
     }
 
-    private func copy(_ command: String, command copied: CopiedCommand) {
-        let pasteboard = NSPasteboard.general
-        pasteboard.clearContents()
-        pasteboard.setString(command, forType: .string)
-        copiedCommand = copied
-    }
-
-    private func applyLoginStatus(_ result: CommandResult) {
+    @discardableResult
+    private func applyLoginStatus(_ result: CommandResult) -> Bool {
         if isLoggedIn(result) {
-            account.connectionKind = .codexLogin
+            account.connectionKind = .login
             if let email = emailAddress(from: result) {
                 account.accountEmail = email
             }
             account.refreshStatus = .ready
-            account.refreshMessage = "Codex login is connected."
+            account.refreshMessage = "\(account.provider.displayName) login is connected. Exact usage opens in \(account.provider.displayName)."
             account.lastSuccessfulRefreshAt = Date()
             loginFlowState = .connected
+            return true
         } else if isNotLoggedIn(result) {
-            account.connectionKind = .codexLogin
+            account.connectionKind = .login
+            account.hasUsageSnapshot = false
             account.refreshStatus = .notConnected
-            account.refreshMessage = "Sign in with Codex to connect this account."
+            account.refreshMessage = "Sign in with \(account.provider.displayName) to connect this account."
             loginFlowState = .idle
+            return false
         } else {
             markLoginFailure(result)
+            return false
         }
     }
 
-    private func applyPingStatus(_ result: CommandResult) {
-        account.connectionKind = .codexLogin
+    @discardableResult
+    private func applyPingStatus(_ result: CommandResult) -> Bool {
+        account.connectionKind = .login
 
         if isLoggedIn(result) {
             if let email = emailAddress(from: result) {
                 account.accountEmail = email
             }
             account.refreshStatus = .ready
-            account.refreshMessage = "Codex login is connected."
+            account.refreshMessage = "\(account.provider.displayName) login is connected. Exact usage opens in \(account.provider.displayName)."
             account.lastSuccessfulRefreshAt = Date()
             loginFlowState = .connected
-        } else {
+            return true
+        } else if isNotLoggedIn(result) {
+            account.hasUsageSnapshot = false
             account.refreshStatus = .notConnected
-            account.refreshMessage = "Sign in with Codex to connect this account."
+            account.refreshMessage = "Sign in with \(account.provider.displayName) to connect this account."
             loginFlowState = .idle
+            return false
+        } else {
+            markLoginFailure(result)
+            return false
         }
     }
 
@@ -302,173 +364,231 @@ struct CodexProfilePanel: View {
             }
 
         let trimmed = lines.joined(separator: " ").trimmingCharacters(in: .whitespacesAndNewlines)
-        return trimmed.isEmpty ? "Codex login did not complete." : trimmed
+        return trimmed.isEmpty ? "\(account.provider.displayName) login did not complete." : trimmed
     }
 }
 
-private enum CodexLoginFlowState: Equatable {
+private enum ProviderLoginFlowState: Equatable {
     case idle
     case openingBrowser
     case checking
+    case loggingOut
     case connected
     case failed(String)
 
     var isWorking: Bool {
         switch self {
-        case .openingBrowser, .checking:
+        case .openingBrowser, .checking, .loggingOut:
             return true
         case .idle, .connected, .failed:
             return false
         }
     }
 
-    var statusLine: String {
+    func statusLine(provider: QuotaProviderKind) -> String {
         switch self {
         case .idle:
-            return "Browser sign-in saved to this profile."
+            return "Use your local \(provider.displayName) session for this account."
         case .openingBrowser:
-            return "Waiting for browser sign-in."
+            return "Opening the \(provider.displayName) sign-in flow."
         case .checking:
-            return "Verifying the saved session."
+            return "Checking the saved session."
+        case .loggingOut:
+            return "Signing out of \(provider.displayName)."
         case .connected:
-            return "Codex session is ready."
+            return "\(provider.displayName) session is ready."
         case .failed(let message):
             return message
         }
     }
 
-    var buttonTitle: String {
+    func buttonTitle(provider: QuotaProviderKind) -> String {
         switch self {
         case .openingBrowser:
             return "Opening"
         case .checking:
             return "Checking"
+        case .loggingOut:
+            return "Logging out"
         case .connected:
-            return "Ping"
+            return "Refresh"
         case .idle, .failed:
-            return "Sign in"
+            return "Sign in with \(provider.displayName)"
         }
     }
 
-    var icon: String {
+    var statusKind: ConnectionStatusKind {
         switch self {
         case .idle:
-            return "safari"
+            return .idle
         case .openingBrowser:
-            return "arrow.up.forward.app"
+            return .working
         case .checking:
-            return "waveform.path.ecg"
+            return .working
+        case .loggingOut:
+            return .working
         case .connected:
-            return "checkmark.seal.fill"
+            return .ready
         case .failed:
-            return "exclamationmark.triangle.fill"
-        }
-    }
-
-    func accent(accountColor: Color) -> Color {
-        switch self {
-        case .idle, .openingBrowser, .checking, .connected:
-            return accountColor
-        case .failed:
-            return Color(hex: "#FF4D57")
+            return .needsAttention
         }
     }
 }
 
-private struct CodexBrowserLoginCard: View {
-    var state: CodexLoginFlowState
-    var accountColor: Color
-    var action: () -> Void
-
-    private var accent: Color {
-        state.accent(accountColor: accountColor)
-    }
+private struct ProviderConnectionCard: View {
+    var state: ProviderLoginFlowState
+    var provider: QuotaProviderKind
+    var primaryAction: () -> Void
+    var logoutAction: () -> Void
 
     var body: some View {
-        HStack(spacing: 12) {
-            ZStack {
-                RoundedRectangle(cornerRadius: 14, style: .continuous)
-                    .fill(accent.opacity(0.13))
-                    .frame(width: 48, height: 48)
+        VStack(alignment: .leading, spacing: 14) {
+            ConnectionStatusRow(
+                icon: "person.crop.circle.badge.checkmark",
+                title: "Use \(provider.displayName) sign-in",
+                message: state.statusLine(provider: provider),
+                state: state.statusKind
+            )
 
-                Image(systemName: state.icon)
-                    .font(.system(size: 18, weight: .bold))
-                    .symbolRenderingMode(.hierarchical)
-                    .foregroundStyle(accent)
+            if state == .connected {
+                HStack(spacing: 8) {
+                    ConnectionActionButton(
+                        title: "Refresh",
+                        icon: "arrow.clockwise",
+                        isEnabled: true,
+                        role: .primary,
+                        action: primaryAction
+                    )
+
+                    ConnectionActionButton(
+                        title: "Log out",
+                        icon: "rectangle.portrait.and.arrow.right",
+                        isEnabled: true,
+                        role: .destructive,
+                        action: logoutAction
+                    )
+                }
+            } else {
+                PrimaryConnectionButton(
+                    title: state.buttonTitle(provider: provider),
+                    isWorking: state.isWorking,
+                    action: primaryAction
+                )
             }
+        }
+        .padding(14)
+        .background(Color.primary.opacity(0.022), in: RoundedRectangle(cornerRadius: 13, style: .continuous))
+    }
+}
 
-            VStack(alignment: .leading, spacing: 4) {
-                Text("Codex login")
-                    .font(.system(size: 14, weight: .bold, design: .rounded))
+private enum ConnectionActionRole {
+    case primary
+    case destructive
 
-                Text(state.statusLine)
+    var foregroundColor: Color {
+        switch self {
+        case .primary:
+            return .white
+        case .destructive:
+            return Color.primary.opacity(0.64)
+        }
+    }
+
+    var backgroundColor: Color {
+        switch self {
+        case .primary:
+            return Color.primary.opacity(0.76)
+        case .destructive:
+            return Color.primary.opacity(0.045)
+        }
+    }
+
+    var strokeColor: Color {
+        switch self {
+        case .primary:
+            return .clear
+        case .destructive:
+            return Color.primary.opacity(0.075)
+        }
+    }
+}
+
+private struct ConnectionActionButton: View {
+    var title: String
+    var icon: String
+    var isEnabled: Bool
+    var role: ConnectionActionRole
+    var action: () -> Void
+
+    var body: some View {
+        Button(action: action) {
+            HStack(spacing: 7) {
+                Image(systemName: icon)
+                    .font(.system(size: 12, weight: .bold))
+
+                Text(title)
+                    .font(.system(size: 12, weight: .bold, design: .rounded))
+                    .lineLimit(1)
+            }
+            .foregroundStyle(role.foregroundColor.opacity(isEnabled ? 1 : 0.48))
+            .frame(maxWidth: .infinity)
+            .frame(height: 38)
+            .background(role.backgroundColor.opacity(isEnabled ? 1 : 0.48), in: RoundedRectangle(cornerRadius: 10, style: .continuous))
+            .overlay {
+                RoundedRectangle(cornerRadius: 10, style: .continuous)
+                    .stroke(role.strokeColor, lineWidth: 1)
+            }
+        }
+        .buttonStyle(.plain)
+        .disabled(!isEnabled)
+    }
+}
+
+private enum ConnectionStatusKind {
+    case idle
+    case working
+    case ready
+    case needsAttention
+
+    var color: Color {
+        switch self {
+        case .idle:
+            return .secondary
+        case .working:
+            return Color(hex: "#8B949E")
+        case .ready:
+            return Color(hex: "#2FBF64")
+        case .needsAttention:
+            return Color(hex: "#B7791F")
+        }
+    }
+}
+
+private struct ConnectionStatusRow: View {
+    var icon: String
+    var title: String
+    var message: String
+    var state: ConnectionStatusKind
+
+    var body: some View {
+        HStack(alignment: .top, spacing: 11) {
+            Image(systemName: icon)
+                .font(.system(size: 13, weight: .semibold))
+                .foregroundStyle(state.color)
+                .frame(width: 28, height: 28)
+                .background(state.color.opacity(0.10), in: Circle())
+
+            VStack(alignment: .leading, spacing: 3) {
+                Text(title)
+                    .font(.system(size: 13, weight: .bold, design: .rounded))
+                    .foregroundStyle(.primary.opacity(0.82))
+
+                Text(message)
                     .font(.system(size: 11, weight: .medium, design: .rounded))
                     .foregroundStyle(.secondary)
                     .lineLimit(2)
                     .fixedSize(horizontal: false, vertical: true)
             }
-
-            Spacer(minLength: 8)
-
-            trailingControl
-        }
-        .padding(12)
-        .frame(minHeight: 74)
-        .background(
-            LinearGradient(
-                colors: [
-                    accent.opacity(0.10),
-                    Color(nsColor: .controlBackgroundColor).opacity(0.76)
-                ],
-                startPoint: .topLeading,
-                endPoint: .bottomTrailing
-            ),
-            in: RoundedRectangle(cornerRadius: 12, style: .continuous)
-        )
-        .overlay(alignment: .leading) {
-            Capsule()
-                .fill(accent)
-                .frame(width: 3, height: 46)
-                .padding(.leading, 7)
-        }
-        .overlay {
-            RoundedRectangle(cornerRadius: 12, style: .continuous)
-                .stroke(accent.opacity(0.22), lineWidth: 1)
-        }
-    }
-
-    @ViewBuilder
-    private var trailingControl: some View {
-        if state.isWorking {
-            HStack(spacing: 7) {
-                ProgressView()
-                    .scaleEffect(0.55)
-                    .frame(width: 14, height: 14)
-
-                Text(state.buttonTitle)
-                    .font(.system(size: 12, weight: .bold, design: .rounded))
-            }
-            .foregroundStyle(accent)
-            .frame(width: 104, height: 34)
-            .background(accent.opacity(0.13), in: Capsule())
-        } else {
-            Button(action: action) {
-                HStack(spacing: 7) {
-                    Image(systemName: state == .connected ? "dot.radiowaves.left.and.right" : "safari")
-                        .font(.system(size: 12, weight: .bold))
-
-                    Text(state.buttonTitle)
-                        .font(.system(size: 12, weight: .bold, design: .rounded))
-                }
-                .foregroundStyle(.white)
-                .frame(width: 104, height: 34)
-                .background(accent, in: Capsule())
-                .overlay {
-                    Capsule()
-                        .stroke(Color.white.opacity(0.18), lineWidth: 1)
-                }
-            }
-            .buttonStyle(.plain)
         }
     }
 }
@@ -477,7 +597,6 @@ private struct ConnectionMethodButton: View {
     var title: String
     var icon: String
     var isSelected: Bool
-    var color: Color
     var action: () -> Void
 
     var body: some View {
@@ -491,17 +610,48 @@ private struct ConnectionMethodButton: View {
             }
             .frame(maxWidth: .infinity)
             .padding(.vertical, 10)
-            .foregroundStyle(isSelected ? color : .secondary)
+            .foregroundStyle(isSelected ? Color.primary.opacity(0.78) : Color.secondary.opacity(0.82))
             .background(
-                isSelected ? color.opacity(0.13) : Color.primary.opacity(0.035),
+                isSelected ? Color(nsColor: .textBackgroundColor).opacity(0.98) : Color.clear,
                 in: RoundedRectangle(cornerRadius: 10, style: .continuous)
             )
             .overlay {
                 RoundedRectangle(cornerRadius: 10, style: .continuous)
-                    .stroke(isSelected ? color.opacity(0.35) : Color.clear, lineWidth: 1)
+                    .stroke(isSelected ? Color.primary.opacity(0.045) : Color.clear, lineWidth: 1)
             }
         }
         .buttonStyle(.plain)
+    }
+}
+
+private struct PrimaryConnectionButton: View {
+    var title: String
+    var isWorking: Bool
+    var action: () -> Void
+
+    var body: some View {
+        Button(action: action) {
+            HStack(spacing: 8) {
+                if isWorking {
+                    ProgressView()
+                        .scaleEffect(0.58)
+                        .frame(width: 14, height: 14)
+                } else {
+                    Image(systemName: "arrow.up.forward.app")
+                        .font(.system(size: 12, weight: .bold))
+                }
+
+                Text(title)
+                    .font(.system(size: 12, weight: .bold, design: .rounded))
+                    .lineLimit(1)
+            }
+            .foregroundStyle(.white)
+            .frame(maxWidth: .infinity)
+            .frame(height: 38)
+            .background(Color.primary.opacity(isWorking ? 0.40 : 0.76), in: RoundedRectangle(cornerRadius: 10, style: .continuous))
+        }
+        .buttonStyle(.plain)
+        .disabled(isWorking)
     }
 }
 
@@ -510,8 +660,6 @@ private struct APITokenButton: View {
     var icon: String
     var isEnabled: Bool
     var action: () -> Void
-
-    private let color = Color(hex: "#54C7EC")
 
     var body: some View {
         Button(action: action) {
@@ -523,35 +671,17 @@ private struct APITokenButton: View {
                     .font(.system(size: 12, weight: .bold, design: .rounded))
                     .lineLimit(1)
             }
-            .foregroundStyle(isEnabled ? .white : color.opacity(0.54))
-            .frame(width: 112, height: 34)
+            .foregroundStyle(isEnabled ? .white : .secondary)
+            .frame(maxWidth: .infinity)
+            .frame(height: 38)
             .background(
-                isEnabled ? color : color.opacity(0.18),
-                in: RoundedRectangle(cornerRadius: 8, style: .continuous)
+                isEnabled ? Color.primary.opacity(0.76) : Color.primary.opacity(0.035),
+                in: RoundedRectangle(cornerRadius: 10, style: .continuous)
             )
             .overlay {
-                RoundedRectangle(cornerRadius: 8, style: .continuous)
-                    .stroke(isEnabled ? Color.white.opacity(0.16) : color.opacity(0.16), lineWidth: 1)
+                RoundedRectangle(cornerRadius: 10, style: .continuous)
+                    .stroke(Color.primary.opacity(isEnabled ? 0 : 0.04), lineWidth: 1)
             }
-        }
-        .buttonStyle(.plain)
-    }
-}
-
-private struct SecondaryConnectionButton: View {
-    var title: String
-    var icon: String
-    var action: () -> Void
-
-    var body: some View {
-        Button(action: action) {
-            Label(title, systemImage: icon)
-                .font(.system(size: 11, weight: .bold, design: .rounded))
-                .lineLimit(1)
-                .frame(maxWidth: .infinity)
-                .padding(.vertical, 7)
-                .foregroundStyle(.secondary)
-                .background(Color.primary.opacity(0.035), in: RoundedRectangle(cornerRadius: 8, style: .continuous))
         }
         .buttonStyle(.plain)
     }

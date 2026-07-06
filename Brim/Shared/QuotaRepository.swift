@@ -83,8 +83,8 @@ public struct QuotaRepository {
         guard let data = defaults.data(forKey: keys.accounts) else {
             return QuotaLoadResult(
                 state: QuotaState(
-                    accounts: QuotaAccountDefaults.examples,
-                    selectedAccountID: QuotaAccountDefaults.examples.first?.id,
+                    accounts: [],
+                    selectedAccountID: nil,
                     isAccountTextHidden: isTextHidden,
                     widgetPageIndex: pageIndex
                 ),
@@ -167,6 +167,14 @@ public struct QuotaWidgetSnapshotStore {
         )
     }
 
+    init(repository: QuotaRepository?, fallbackURL: URL, previousFallbackURL: URL? = nil) {
+        self.repository = repository
+        self.fallbackURL = fallbackURL
+        self.previousFallbackURL = previousFallbackURL ?? fallbackURL
+            .deletingLastPathComponent()
+            .appendingPathComponent("previous-widget-snapshot.json")
+    }
+
     public func load() -> QuotaLoadResult {
         guard let repository else {
             if let fallbackResult = loadFallbackSnapshot() {
@@ -197,14 +205,7 @@ public struct QuotaWidgetSnapshotStore {
 
     @discardableResult
     public func save(_ state: QuotaState) -> QuotaStorageStatus {
-        var snapshot = state
-        snapshot.accounts = snapshot.accounts.map { account in
-            var account = account
-            account.codexProfilePath = nil
-            account.credentialID = nil
-            return account
-        }
-        snapshot.normalize()
+        let snapshot = state.widgetSnapshotState()
 
         let fallbackStatus = saveFallbackSnapshot(snapshot)
 

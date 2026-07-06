@@ -1,0 +1,344 @@
+import XCTest
+@testable import Brim
+
+final class QuotaTransferTests: XCTestCase {
+    override func tearDown() {
+        URLProtocolMock.requestHandler = nil
+        super.tearDown()
+    }
+
+    func testImportScrubsCredentialIDsAndReconnectsTokenAccounts() throws {
+        let account = QuotaAccount(
+            id: UUID(uuidString: "11111111-1111-1111-1111-111111111111")!,
+            providerAccountID: "remote-id",
+            name: "Imported",
+            accountEmail: "user@example.com",
+            colorHex: "#2CCB68",
+            weeklyLimitMinutes: 300,
+            usedMinutes: 20,
+            sessionLimitMinutes: 300,
+            sessionUsedMinutes: 40,
+            weeklyUsedPercent: 7,
+            sessionUsedPercent: 13,
+            resetWeekday: 2,
+            resetHour: 9,
+            resetMinute: 30,
+            providerProfilePath: "$HOME/.codex-accounts/old-machine",
+            connectionKind: .apiToken,
+            hasUsageSnapshot: true,
+            refreshStatus: .ready,
+            lastRefreshAttemptAt: Date(timeIntervalSince1970: 50),
+            lastSuccessfulRefreshAt: Date(timeIntervalSince1970: 100),
+            refreshMessage: "Loaded live usage.",
+            credentialID: "keychain-secret"
+        )
+        let payload = QuotaAccountsTransferPayload(
+            exportedAt: Date(timeIntervalSince1970: 200),
+            accounts: [account],
+            selectedAccountID: account.id,
+            isAccountTextHidden: true,
+            widgetPageIndex: 3
+        )
+        let encoder = JSONEncoder()
+        encoder.dateEncodingStrategy = .iso8601
+
+        let imported = try QuotaAccountsTransferPayload.importedState(from: encoder.encode(payload))
+
+        XCTAssertEqual(imported.accounts.count, 1)
+        XCTAssertNil(imported.accounts[0].credentialID)
+        XCTAssertNil(imported.accounts[0].providerAccountID)
+        XCTAssertNil(imported.accounts[0].accountEmail)
+        XCTAssertNil(imported.accounts[0].providerProfilePath)
+        XCTAssertEqual(imported.accounts[0].refreshStatus, .notConnected)
+        XCTAssertNil(imported.accounts[0].lastRefreshAttemptAt)
+        XCTAssertNil(imported.accounts[0].lastSuccessfulRefreshAt)
+        XCTAssertFalse(imported.accounts[0].hasUsageSnapshot)
+        XCTAssertEqual(imported.accounts[0].usedMinutes, 0)
+        XCTAssertEqual(imported.accounts[0].sessionUsedMinutes, 0)
+        XCTAssertNil(imported.accounts[0].weeklyUsedPercent)
+        XCTAssertNil(imported.accounts[0].sessionUsedPercent)
+        XCTAssertEqual(imported.accounts[0].refreshMessage, "Add this device's API token to reconnect.")
+        XCTAssertEqual(imported.selectedAccountID, account.id)
+        XCTAssertEqual(imported.widgetPageIndex, 0)
+        XCTAssertTrue(imported.isAccountTextHidden)
+    }
+
+    func testExportScrubsPersonalLiveStateFromConnectedAccounts() throws {
+        let account = QuotaAccount(
+            id: UUID(uuidString: "11111111-1111-1111-1111-111111111111")!,
+            providerAccountID: "remote-id",
+            name: "Portable",
+            accountEmail: "user@example.com",
+            colorHex: "#2CCB68",
+            weeklyLimitMinutes: 300,
+            usedMinutes: 20,
+            sessionLimitMinutes: 300,
+            sessionUsedMinutes: 40,
+            weeklyUsedPercent: 7,
+            sessionUsedPercent: 13,
+            resetWeekday: 2,
+            resetHour: 9,
+            resetMinute: 30,
+            providerProfilePath: "$HOME/.codex-accounts/old-machine",
+            connectionKind: .login,
+            hasUsageSnapshot: true,
+            refreshStatus: .ready,
+            lastRefreshAttemptAt: Date(timeIntervalSince1970: 50),
+            lastSuccessfulRefreshAt: Date(timeIntervalSince1970: 100),
+            refreshMessage: "Loaded live usage.",
+            credentialID: "keychain-secret"
+        )
+
+        let payload = QuotaAccountsTransferPayload(
+            exportedAt: Date(timeIntervalSince1970: 200),
+            accounts: [account],
+            selectedAccountID: account.id,
+            isAccountTextHidden: false,
+            widgetPageIndex: 0
+        )
+
+        let exported = try XCTUnwrap(payload.accounts.first)
+        XCTAssertEqual(exported.name, "Portable")
+        XCTAssertNil(exported.providerAccountID)
+        XCTAssertNil(exported.accountEmail)
+        XCTAssertNil(exported.providerProfilePath)
+        XCTAssertNil(exported.credentialID)
+        XCTAssertNil(exported.lastRefreshAttemptAt)
+        XCTAssertNil(exported.lastSuccessfulRefreshAt)
+        XCTAssertNil(exported.refreshMessage)
+        XCTAssertFalse(exported.hasUsageSnapshot)
+        XCTAssertEqual(exported.refreshStatus, .notConnected)
+        XCTAssertEqual(exported.usedMinutes, 0)
+        XCTAssertEqual(exported.sessionUsedMinutes, 0)
+        XCTAssertNil(exported.weeklyUsedPercent)
+        XCTAssertNil(exported.sessionUsedPercent)
+    }
+
+    func testWidgetSnapshotScrubsPrivateProviderFields() throws {
+        let account = QuotaAccount(
+            id: UUID(uuidString: "11111111-1111-1111-1111-111111111111")!,
+            providerAccountID: "remote-id",
+            name: "Widget",
+            accountEmail: "user@example.com",
+            colorHex: "#2CCB68",
+            weeklyLimitMinutes: 300,
+            usedMinutes: 20,
+            sessionLimitMinutes: 300,
+            sessionUsedMinutes: 40,
+            resetWeekday: 2,
+            resetHour: 9,
+            resetMinute: 30,
+            providerProfilePath: "$HOME/.codex-accounts/old-machine",
+            connectionKind: .login,
+            hasUsageSnapshot: true,
+            refreshStatus: .ready,
+            refreshMessage: "Loaded live usage.",
+            credentialID: "keychain-secret"
+        )
+        let snapshotURL = URL(fileURLWithPath: NSTemporaryDirectory(), isDirectory: true)
+            .appendingPathComponent("brim-widget-\(UUID().uuidString)", isDirectory: true)
+            .appendingPathComponent("widget-snapshot.json")
+        let snapshotStore = QuotaWidgetSnapshotStore(repository: nil, fallbackURL: snapshotURL)
+
+        XCTAssertEqual(
+            snapshotStore.save(
+                QuotaState(accounts: [account], selectedAccountID: account.id)
+            ),
+            .ready
+        )
+
+        let loaded = snapshotStore.load().state.accounts[0]
+        XCTAssertEqual(loaded.name, "Widget")
+        XCTAssertNil(loaded.providerAccountID)
+        XCTAssertNil(loaded.accountEmail)
+        XCTAssertNil(loaded.providerProfilePath)
+        XCTAssertNil(loaded.credentialID)
+        XCTAssertNil(loaded.refreshMessage)
+    }
+
+    func testProviderUsageURLPointsAtCodexAnalyticsUsagePage() throws {
+        XCTAssertEqual(
+            QuotaProviderKind.codex.usageURL?.absoluteString,
+            "https://chatgpt.com/codex/cloud/settings/analytics#usage"
+        )
+    }
+
+    func testImportRejectsUnsupportedTransferVersion() throws {
+        let account = QuotaAccount(
+            id: UUID(uuidString: "11111111-1111-1111-1111-111111111111")!,
+            name: "Future",
+            colorHex: "#2CCB68",
+            weeklyLimitMinutes: 300,
+            usedMinutes: 0,
+            resetWeekday: 2,
+            resetHour: 9,
+            resetMinute: 30
+        )
+        let payload = QuotaAccountsTransferPayload(
+            version: QuotaAccountsTransferPayload.supportedVersion + 1,
+            accounts: [account],
+            selectedAccountID: account.id,
+            isAccountTextHidden: false,
+            widgetPageIndex: 0
+        )
+        let data = try JSONEncoder().encode(payload)
+
+        XCTAssertThrowsError(try QuotaAccountsTransferPayload.importedState(from: data)) { error in
+            XCTAssertEqual(error as? QuotaAccountsTransferError, .unsupportedVersion(2))
+        }
+    }
+
+    func testCodexUsageClientDecodesRemainingPercentages() async throws {
+        let profileURL = URL(fileURLWithPath: NSTemporaryDirectory(), isDirectory: true)
+            .appendingPathComponent("brim-codex-profile-\(UUID().uuidString)", isDirectory: true)
+        try FileManager.default.createDirectory(at: profileURL, withIntermediateDirectories: true)
+        try Data(#"{"tokens":{"access_token":"test-token"}}"#.utf8)
+            .write(to: profileURL.appendingPathComponent("auth.json"))
+
+        URLProtocolMock.requestHandler = { request in
+            XCTAssertEqual(request.value(forHTTPHeaderField: "Authorization"), "Bearer test-token")
+            let response = HTTPURLResponse(
+                url: try XCTUnwrap(request.url),
+                statusCode: 200,
+                httpVersion: nil,
+                headerFields: ["Content-Type": "application/json"]
+            )!
+            let data = Data(
+                """
+                {
+                  "account_email": "live@example.com",
+                  "rate_limit": {
+                    "primary_window": {
+                      "remaining_percent": 84,
+                      "limit_window_seconds": 18000,
+                      "reset_at": 1783302960
+                    },
+                    "secondary_window": {
+                      "remaining_percent": 40,
+                      "limit_window_seconds": 604800,
+                      "reset_at": 1783701180
+                    }
+                  }
+                }
+                """.utf8
+            )
+            return (response, data)
+        }
+
+        let configuration = URLSessionConfiguration.ephemeral
+        configuration.protocolClasses = [URLProtocolMock.self]
+        let session = URLSession(configuration: configuration)
+        let client = CodexUsageClient(
+            session: session,
+            usageURL: URL(string: "https://example.com/usage")!
+        )
+        let account = QuotaAccount(
+            name: "Codex",
+            colorHex: "#2CCB68",
+            weeklyLimitMinutes: 300,
+            usedMinutes: 0,
+            resetWeekday: 2,
+            resetHour: 9,
+            resetMinute: 30,
+            providerProfilePath: profileURL.path,
+            connectionKind: .login
+        )
+
+        let outcome = await client.fetchUsage(for: account)
+        guard case .success(let result) = outcome else {
+            return XCTFail("Expected live usage, got \(outcome)")
+        }
+
+        XCTAssertEqual(result.email, "live@example.com")
+        XCTAssertEqual(result.quota.sessionUsedPercent, 16)
+        XCTAssertEqual(result.quota.weeklyUsedPercent, 60)
+        XCTAssertEqual(result.quota.sessionLimitMinutes, 300)
+        XCTAssertEqual(result.quota.weeklyLimitMinutes, 10_080)
+    }
+
+    func testUnknownConnectionKindFailsImport() throws {
+        let data = Data(#""newProviderMode""#.utf8)
+
+        XCTAssertThrowsError(try JSONDecoder().decode(QuotaConnectionKind.self, from: data)) { error in
+            guard case DecodingError.dataCorrupted(let context) = error else {
+                return XCTFail("Expected a dataCorrupted error, got \(error).")
+            }
+
+            XCTAssertTrue(context.debugDescription.contains("Unknown quota connection kind"))
+        }
+    }
+}
+
+private final class URLProtocolMock: URLProtocol {
+    static var requestHandler: ((URLRequest) throws -> (HTTPURLResponse, Data))?
+
+    override class func canInit(with request: URLRequest) -> Bool {
+        true
+    }
+
+    override class func canonicalRequest(for request: URLRequest) -> URLRequest {
+        request
+    }
+
+    override func startLoading() {
+        guard let requestHandler = Self.requestHandler else {
+            client?.urlProtocol(self, didFailWithError: URLError(.badServerResponse))
+            return
+        }
+
+        do {
+            let (response, data) = try requestHandler(request)
+            client?.urlProtocol(self, didReceive: response, cacheStoragePolicy: .notAllowed)
+            client?.urlProtocol(self, didLoad: data)
+            client?.urlProtocolDidFinishLoading(self)
+        } catch {
+            client?.urlProtocol(self, didFailWithError: error)
+        }
+    }
+
+    override func stopLoading() {}
+}
+
+final class QuotaAccountColorTests: XCTestCase {
+    func testNewAccountUsesFirstUnusedPresetColour() {
+        let color = QuotaAccountDefaults.colorHexForNewAccount(
+            existingColorHexes: ["#d7ea48", "#65D6FF"]
+        )
+
+        XCTAssertEqual(color, "#40E06B")
+    }
+
+    func testAddAccountUsesFirstUnusedPresetColourFromExistingAccounts() {
+        var state = QuotaState(
+            accounts: [
+                testAccount(name: "First", colorHex: "#D7EA48"),
+                testAccount(name: "Third", colorHex: "#65D6FF")
+            ]
+        )
+
+        state.addAccount()
+
+        XCTAssertEqual(state.accounts.last?.colorHex, "#40E06B")
+    }
+
+    func testNewAccountUsesCustomColourWhenPresetColoursAreExhausted() throws {
+        let color = QuotaAccountDefaults.colorHexForNewAccount(
+            existingColorHexes: QuotaAccountDefaults.presetColorHexes
+        )
+
+        XCTAssertNotNil(QuotaColor.normalizedHex(color))
+        XCTAssertFalse(QuotaAccountDefaults.presetColorHexes.contains(color))
+    }
+
+    private func testAccount(name: String, colorHex: String) -> QuotaAccount {
+        QuotaAccount(
+            name: name,
+            colorHex: colorHex,
+            weeklyLimitMinutes: 300,
+            usedMinutes: 0,
+            resetWeekday: 2,
+            resetHour: 9,
+            resetMinute: 30
+        )
+    }
+}

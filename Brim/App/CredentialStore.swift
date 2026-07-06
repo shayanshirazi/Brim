@@ -52,6 +52,35 @@ final class CredentialStore {
         }
     }
 
+    func apiToken(credentialID: String?) -> String? {
+        guard let credentialID else {
+            return nil
+        }
+
+        for service in services {
+            let query: [String: Any] = [
+                kSecClass as String: kSecClassGenericPassword,
+                kSecAttrService as String: service,
+                kSecAttrAccount as String: credentialID,
+                kSecReturnData as String: true,
+                kSecMatchLimit as String: kSecMatchLimitOne
+            ]
+
+            var item: CFTypeRef?
+            guard
+                SecItemCopyMatching(query as CFDictionary, &item) == errSecSuccess,
+                let data = item as? Data,
+                let token = String(data: data, encoding: .utf8)
+            else {
+                continue
+            }
+
+            return token
+        }
+
+        return nil
+    }
+
     func deleteAPIToken(credentialID: String?) {
         guard let credentialID else {
             return

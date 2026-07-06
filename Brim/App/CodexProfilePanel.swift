@@ -8,6 +8,9 @@ struct ProviderProfilePanel: View {
     @State private var apiToken = ""
     @State private var selectedConnectionKind: QuotaConnectionKind
     @State private var loginFlowState: ProviderLoginFlowState = .idle
+    @State private var didCopyAPIToken = false
+    @State private var apiTokenIsSaving = false
+    @State private var savedAPITokenPreview: String?
     @State private var showsProfileLocation = false
     @AppStorage(BrimRefreshInterval.storageKey) private var refreshIntervalSeconds = BrimRefreshInterval.defaultSeconds
     var openPersonalizationSettings: () -> Void
@@ -49,30 +52,19 @@ struct ProviderProfilePanel: View {
             .background(Color.primary.opacity(0.025), in: RoundedRectangle(cornerRadius: 12, style: .continuous))
 
             if selectedConnectionKind == .apiToken {
-                VStack(alignment: .leading, spacing: 12) {
-                    ConnectionStatusRow(
-                        icon: "key.horizontal",
-                        title: "Use an API token",
-                        message: "Save a token in Keychain for this account.",
-                        state: .idle
-                    )
-
-                    SecureField("API token", text: $apiToken)
-                        .textFieldStyle(.plain)
-                        .font(.system(size: 12, weight: .medium, design: .rounded))
-                        .padding(.horizontal, 12)
-                        .frame(maxWidth: .infinity)
-                        .frame(height: 38)
-                        .background(Color(nsColor: .textBackgroundColor), in: RoundedRectangle(cornerRadius: 10, style: .continuous))
-
-                    APITokenButton(
-                        title: "Save token",
-                        icon: "checkmark.circle.fill",
-                        isEnabled: !apiToken.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty,
-                        action: saveAPIToken
-                    )
-                    .disabled(apiToken.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
-                }
+                APITokenConnectionCard(
+                    token: $apiToken,
+                    savedTokenPreview: savedAPITokenPreview,
+                    validationMessage: apiTokenValidationMessage,
+                    statusMessage: apiTokenStatusMessage,
+                    statusKind: apiTokenStatusKind,
+                    isWorking: apiTokenIsWorking,
+                    didCopyToken: didCopyAPIToken,
+                    saveAction: saveAPIToken,
+                    refreshAction: refreshAPITokenAccount,
+                    revokeAction: confirmRevokeAPIToken,
+                    copyAction: copySavedAPIToken
+                )
             } else {
                 VStack(alignment: .leading, spacing: 12) {
                     ProviderConnectionCard(
@@ -87,42 +79,58 @@ struct ProviderProfilePanel: View {
             }
 
             Spacer(minLength: 0)
-
-            HStack(spacing: 7) {
-                Image(systemName: "arrow.triangle.2.circlepath")
-                    .foregroundStyle(.secondary)
-
-                Text("Every")
-                    .foregroundStyle(.secondary)
-
-                Button(action: openPersonalizationSettings) {
-                    Text(BrimRefreshInterval.displayTitle(for: refreshIntervalSeconds))
-                        .underline(true, color: .secondary)
-                }
-                .buttonStyle(.plain)
-                .foregroundStyle(.secondary)
-                .help("Change refresh frequency")
-
-                Spacer(minLength: 8)
-
-                Label("Keychain", systemImage: "lock.fill")
-                    .foregroundStyle(.secondary)
-                    .help("Tokens stay in Keychain.")
-            }
-            .font(.system(size: 11, weight: .medium, design: .rounded))
-            .lineLimit(1)
-            .minimumScaleFactor(0.88)
-            .frame(height: 28, alignment: .center)
         }
+        .padding(.bottom, 36)
         .frame(maxHeight: .infinity, alignment: .topLeading)
+        .overlay(alignment: .bottom) {
+            setupFooter
+        }
+        .onAppear {
+            selectedConnectionKind = account.connectionKind
+            refreshSavedAPITokenPreview()
+        }
         .onChange(of: account.id) { _, _ in
             selectedConnectionKind = account.connectionKind
             loginFlowState = .idle
+            apiToken = ""
+            didCopyAPIToken = false
+            apiTokenIsSaving = false
             showsProfileLocation = false
+            refreshSavedAPITokenPreview()
         }
         .onChange(of: account.connectionKind) { _, kind in
             selectedConnectionKind = kind
+            refreshSavedAPITokenPreview()
         }
+    }
+
+    private var setupFooter: some View {
+        HStack(spacing: 7) {
+            Image(systemName: "arrow.triangle.2.circlepath")
+                .foregroundStyle(.secondary)
+
+            Text("Every")
+                .foregroundStyle(.secondary)
+
+            Button(action: openPersonalizationSettings) {
+                Text(BrimRefreshInterval.displayTitle(for: refreshIntervalSeconds))
+                    .underline(true, color: .secondary)
+            }
+            .buttonStyle(.plain)
+            .foregroundStyle(.secondary)
+            .help("Change refresh frequency")
+
+            Spacer(minLength: 8)
+
+            Label("Keychain", systemImage: "lock.fill")
+                .foregroundStyle(.secondary)
+                .help("Tokens stay in Keychain.")
+        }
+        .font(.system(size: 11, weight: .medium, design: .rounded))
+        .lineLimit(1)
+        .minimumScaleFactor(0.88)
+        .frame(maxWidth: .infinity)
+        .frame(height: 28, alignment: .center)
     }
 
     private var profileLocationDisclosure: some View {
@@ -163,6 +171,73 @@ struct ProviderProfilePanel: View {
         }
     }
 
+    private var trimmedAPIToken: String {
+        apiToken.trimmingCharacters(in: .whitespacesAndNewlines)
+    }
+
+    private var apiTokenValidation: APITokenValidation {
+        APITokenValidator.validate(trimmedAPIToken)
+    }
+
+    private var apiTokenValidationMessage: String? {
+        guard !trimmedAPIToken.isEmpty, case .invalid(let message) = apiTokenValidation else {
+            return nil
+        }
+
+        return message
+    }
+
+    private var hasSavedAPIToken: Bool {
+        savedAPITokenPreview != nil
+    }
+
+    private var apiTokenStatusKind: ConnectionStatusKind {
+        if apiTokenIsSaving {
+            return .working
+        }
+
+        guard account.connectionKind == .apiToken, hasSavedAPIToken else {
+            return .idle
+        }
+
+        switch account.refreshStatus {
+        case .waitingForQuotaSource:
+            return .working
+        case .refreshFailed:
+            return .needsAttention
+        case .notConnected:
+            return .idle
+        case .ready, .manual:
+            return .ready
+        }
+    }
+
+    private var apiTokenIsWorking: Bool {
+        apiTokenIsSaving
+            || account.connectionKind == .apiToken
+            && hasSavedAPIToken
+            && account.refreshStatus == .waitingForQuotaSource
+    }
+
+    private var apiTokenStatusMessage: String {
+        if apiTokenIsSaving {
+            return "Validating the API token with OpenAI."
+        }
+
+        if account.connectionKind == .apiToken, hasSavedAPIToken {
+            if account.refreshStatus == .waitingForQuotaSource {
+                return "Checking the saved token."
+            }
+            if account.refreshStatus == .refreshFailed, let message = account.refreshMessage {
+                return message
+            }
+
+            return "Saved in Keychain for this account."
+        }
+
+        return "Save a valid OpenAI API key in Keychain for this account."
+    }
+
     private func selectConnectionTab(_ kind: QuotaConnectionKind) {
         selectedConnectionKind = kind
     }
@@ -173,27 +248,22 @@ struct ProviderProfilePanel: View {
         loginFlowState = .openingBrowser
         account.refreshStatus = .waitingForQuotaSource
         account.lastRefreshAttemptAt = Date()
-        account.refreshMessage = "Opening \(account.provider.displayName) login in your browser."
+        account.refreshMessage = "Opening Codex sign-in in your browser."
 
         Task {
             let expandedProfilePath = QuotaFormatting.expandedHomePath(profilePath)
-            let loginResult = await CodexCommandRunner.run(
-                profilePath: expandedProfilePath,
-                subcommand: "login",
-                timeout: 300
-            )
-
-            guard loginResult.exitCode == 0 else {
-                markLoginFailure(loginResult)
+            let loginResult = await CodexCommandRunner.startBrowserLogin(profilePath: expandedProfilePath)
+            if loginResult.exitCode == 0 {
+                account.connectionKind = .login
+                account.refreshStatus = .ready
+                account.refreshMessage = "\(account.provider.displayName) login is connected. Exact usage opens in \(account.provider.displayName)."
+                account.lastSuccessfulRefreshAt = Date()
+                await store.refreshAccount(id: account.id)
+                loginFlowState = .connected
                 return
             }
 
-            loginFlowState = .checking
-            let statusResult = await CodexCommandRunner.run(profilePath: expandedProfilePath, subcommand: "login status")
-            if applyLoginStatus(statusResult) {
-                await store.refreshAccount(id: account.id)
-                loginFlowState = .connected
-            }
+            markLoginFailure(loginResult)
         }
     }
 
@@ -206,10 +276,14 @@ struct ProviderProfilePanel: View {
 
         Task {
             let expandedProfilePath = QuotaFormatting.expandedHomePath(profilePath)
-            let statusResult = await CodexCommandRunner.run(profilePath: expandedProfilePath, subcommand: "login status")
-            if applyPingStatus(statusResult) {
+            if CodexProfileAuthStore.hasUsableTokens(profilePath: expandedProfilePath) {
                 await store.refreshAccount(id: account.id)
                 loginFlowState = .connected
+            } else {
+                account.hasUsageSnapshot = false
+                account.refreshStatus = .notConnected
+                account.refreshMessage = "Sign in with \(account.provider.displayName) to connect this account."
+                loginFlowState = .idle
             }
         }
     }
@@ -239,10 +313,16 @@ struct ProviderProfilePanel: View {
 
         Task {
             let expandedProfilePath = QuotaFormatting.expandedHomePath(profilePath)
-            let logoutResult = await CodexCommandRunner.run(profilePath: expandedProfilePath, subcommand: "logout", timeout: 60)
-
-            guard logoutResult.exitCode == 0 else {
-                markLoginFailure(logoutResult)
+            do {
+                try CodexProfileAuthStore.removeAuth(profilePath: expandedProfilePath)
+            } catch {
+                markLoginFailure(
+                    CommandResult(
+                        exitCode: -1,
+                        standardOutput: "",
+                        standardError: "Brim could not remove this Codex profile's auth file."
+                    )
+                )
                 return
             }
 
@@ -254,79 +334,117 @@ struct ProviderProfilePanel: View {
     }
 
     private func saveAPIToken() {
-        let token = apiToken.trimmingCharacters(in: .whitespacesAndNewlines)
-        guard !token.isEmpty else {
+        guard !apiTokenIsSaving else {
             return
         }
 
-        do {
-            let credentialID = try CredentialStore.shared.saveAPIToken(token, accountID: account.id)
-            selectedConnectionKind = .apiToken
-            account.connectionKind = .apiToken
-            account.credentialID = credentialID
-            account.hasUsageSnapshot = false
-            account.refreshStatus = .ready
-            account.refreshMessage = "API token saved. Exact usage opens in \(account.provider.displayName)."
-            account.lastRefreshAttemptAt = Date()
-            account.lastSuccessfulRefreshAt = Date()
-            apiToken = ""
-        } catch {
-            selectedConnectionKind = .apiToken
-            account.connectionKind = .apiToken
-            account.refreshStatus = .refreshFailed
-            account.refreshMessage = "Could not save API token."
-            account.lastRefreshAttemptAt = Date()
+        let token = trimmedAPIToken
+        guard case .valid = APITokenValidator.validate(token) else {
+            return
+        }
+
+        selectedConnectionKind = .apiToken
+        account.connectionKind = .apiToken
+        account.refreshStatus = .waitingForQuotaSource
+        account.refreshMessage = "Validating API token."
+        account.lastRefreshAttemptAt = Date()
+        apiTokenIsSaving = true
+
+        Task { @MainActor in
+            do {
+                try await APITokenValidationClient().validate(token)
+                let credentialID = try CredentialStore.shared.saveAPIToken(token, accountID: account.id)
+
+                account.connectionKind = .apiToken
+                account.credentialID = credentialID
+                account.hasUsageSnapshot = false
+                account.refreshStatus = .ready
+                account.refreshMessage = "API token saved. Exact usage opens in \(account.provider.displayName)."
+                account.lastSuccessfulRefreshAt = Date()
+                apiToken = ""
+                didCopyAPIToken = false
+                savedAPITokenPreview = APITokenPreview.mask(token)
+            } catch {
+                account.connectionKind = .apiToken
+                account.refreshStatus = .refreshFailed
+                account.refreshMessage = (error as? APITokenValidationError)?.message ?? "Could not validate API token."
+            }
+
+            apiTokenIsSaving = false
         }
     }
 
-    @discardableResult
-    private func applyLoginStatus(_ result: CommandResult) -> Bool {
-        if isLoggedIn(result) {
-            account.connectionKind = .login
-            if let email = emailAddress(from: result) {
-                account.accountEmail = email
-            }
-            account.refreshStatus = .ready
-            account.refreshMessage = "\(account.provider.displayName) login is connected. Exact usage opens in \(account.provider.displayName)."
-            account.lastSuccessfulRefreshAt = Date()
-            loginFlowState = .connected
-            return true
-        } else if isNotLoggedIn(result) {
-            account.connectionKind = .login
-            account.hasUsageSnapshot = false
-            account.refreshStatus = .notConnected
-            account.refreshMessage = "Sign in with \(account.provider.displayName) to connect this account."
-            loginFlowState = .idle
-            return false
-        } else {
-            markLoginFailure(result)
-            return false
+    private func refreshAPITokenAccount() {
+        selectedConnectionKind = .apiToken
+        account.connectionKind = .apiToken
+        account.refreshStatus = .waitingForQuotaSource
+        account.refreshMessage = nil
+        account.lastRefreshAttemptAt = Date()
+
+        Task {
+            await store.refreshAccount(id: account.id)
         }
     }
 
-    @discardableResult
-    private func applyPingStatus(_ result: CommandResult) -> Bool {
-        account.connectionKind = .login
+    private func confirmRevokeAPIToken() {
+        let alert = NSAlert()
+        alert.alertStyle = .warning
+        alert.messageText = "Revoke API token?"
+        alert.informativeText = "This removes the saved token for \(account.name) from Keychain on this Mac."
+        alert.addButton(withTitle: "Revoke")
+        alert.addButton(withTitle: "Cancel")
 
-        if isLoggedIn(result) {
-            if let email = emailAddress(from: result) {
-                account.accountEmail = email
-            }
-            account.refreshStatus = .ready
-            account.refreshMessage = "\(account.provider.displayName) login is connected. Exact usage opens in \(account.provider.displayName)."
-            account.lastSuccessfulRefreshAt = Date()
-            loginFlowState = .connected
-            return true
-        } else if isNotLoggedIn(result) {
-            account.hasUsageSnapshot = false
-            account.refreshStatus = .notConnected
-            account.refreshMessage = "Sign in with \(account.provider.displayName) to connect this account."
-            loginFlowState = .idle
-            return false
-        } else {
-            markLoginFailure(result)
-            return false
+        guard alert.runModal() == .alertFirstButtonReturn else {
+            return
         }
+
+        revokeAPIToken()
+    }
+
+    private func revokeAPIToken() {
+        CredentialStore.shared.deleteAPIToken(credentialID: account.credentialID)
+        selectedConnectionKind = .apiToken
+        account.connectionKind = .apiToken
+        account.credentialID = nil
+        account.hasUsageSnapshot = false
+        account.refreshStatus = .notConnected
+        account.refreshMessage = "Add an API token to reconnect this account."
+        account.lastRefreshAttemptAt = Date()
+        account.lastSuccessfulRefreshAt = nil
+        didCopyAPIToken = false
+        savedAPITokenPreview = nil
+    }
+
+    private func copySavedAPIToken() {
+        guard let token = CredentialStore.shared.apiToken(credentialID: account.credentialID) else {
+            return
+        }
+
+        NSPasteboard.general.clearContents()
+        NSPasteboard.general.setString(token, forType: .string)
+        didCopyAPIToken = true
+
+        DispatchQueue.main.asyncAfter(deadline: .now() + 1.1) {
+            didCopyAPIToken = false
+        }
+
+        DispatchQueue.main.asyncAfter(deadline: .now() + 30) {
+            guard NSPasteboard.general.string(forType: .string) == token else {
+                return
+            }
+            NSPasteboard.general.clearContents()
+        }
+    }
+
+    private func refreshSavedAPITokenPreview() {
+        guard account.connectionKind == .apiToken else {
+            savedAPITokenPreview = nil
+            return
+        }
+
+        savedAPITokenPreview = CredentialStore.shared
+            .apiToken(credentialID: account.credentialID)
+            .map(APITokenPreview.mask)
     }
 
     private func markLoginFailure(_ result: CommandResult) {
@@ -334,20 +452,6 @@ struct ProviderProfilePanel: View {
         account.refreshStatus = .refreshFailed
         account.refreshMessage = message
         loginFlowState = .failed(message)
-    }
-
-    private func isLoggedIn(_ result: CommandResult) -> Bool {
-        let output = (result.standardOutput + "\n" + result.standardError).lowercased()
-        return result.exitCode == 0 && output.contains("logged in")
-    }
-
-    private func emailAddress(from result: CommandResult) -> String? {
-        QuotaFormatting.emailAddress(in: result.standardOutput + "\n" + result.standardError)
-    }
-
-    private func isNotLoggedIn(_ result: CommandResult) -> Bool {
-        let output = (result.standardOutput + "\n" + result.standardError).lowercased()
-        return output.contains("not logged in")
     }
 
     private func commandMessage(from result: CommandResult) -> String {
@@ -390,7 +494,7 @@ private enum ProviderLoginFlowState: Equatable {
         case .idle:
             return "Use your local \(provider.displayName) session for this account."
         case .openingBrowser:
-            return "Opening the \(provider.displayName) sign-in flow."
+            return "Complete sign-in in the browser window."
         case .checking:
             return "Checking the saved session."
         case .loggingOut:
@@ -478,6 +582,235 @@ private struct ProviderConnectionCard: View {
         }
         .padding(14)
         .background(Color.primary.opacity(0.022), in: RoundedRectangle(cornerRadius: 13, style: .continuous))
+    }
+}
+
+private enum APITokenValidation: Equatable {
+    case empty
+    case valid
+    case invalid(String)
+}
+
+private enum APITokenValidator {
+    static func validate(_ token: String) -> APITokenValidation {
+        guard !token.isEmpty else {
+            return .empty
+        }
+
+        guard token == token.trimmingCharacters(in: .whitespacesAndNewlines),
+              token.rangeOfCharacter(from: .whitespacesAndNewlines) == nil
+        else {
+            return .invalid("Paste the token without spaces or line breaks.")
+        }
+
+        guard token.hasPrefix("sk-") else {
+            return .invalid("OpenAI API keys begin with sk-.")
+        }
+
+        guard token.count >= 24 else {
+            return .invalid("That key looks too short.")
+        }
+
+        let allowedCharacters = CharacterSet.alphanumerics.union(CharacterSet(charactersIn: "-_"))
+        guard token.rangeOfCharacter(from: allowedCharacters.inverted) == nil else {
+            return .invalid("That key contains an unexpected character.")
+        }
+
+        return .valid
+    }
+}
+
+private enum APITokenValidationError: Error {
+    case rejected
+    case server(Int)
+    case network(String)
+
+    var message: String {
+        switch self {
+        case .rejected:
+            return "OpenAI rejected this API token."
+        case .server(let statusCode):
+            return "Could not validate API token. OpenAI returned HTTP \(statusCode)."
+        case .network(let message):
+            return "Could not validate API token: \(message)"
+        }
+    }
+}
+
+private struct APITokenValidationClient {
+    private let session: URLSession
+    private let validationURL: URL
+
+    init(
+        session: URLSession = .shared,
+        validationURL: URL = URL(string: "https://api.openai.com/v1/models")!
+    ) {
+        self.session = session
+        self.validationURL = validationURL
+    }
+
+    func validate(_ token: String) async throws {
+        var request = URLRequest(url: validationURL)
+        request.httpMethod = "GET"
+        request.setValue("Bearer \(token)", forHTTPHeaderField: "Authorization")
+        request.setValue("application/json", forHTTPHeaderField: "Accept")
+
+        do {
+            let (_, response) = try await session.data(for: request)
+            guard let httpResponse = response as? HTTPURLResponse else {
+                throw APITokenValidationError.network("No HTTP response.")
+            }
+
+            switch httpResponse.statusCode {
+            case 200..<300:
+                return
+            case 401, 403:
+                throw APITokenValidationError.rejected
+            default:
+                throw APITokenValidationError.server(httpResponse.statusCode)
+            }
+        } catch let error as APITokenValidationError {
+            throw error
+        } catch {
+            throw APITokenValidationError.network(error.localizedDescription)
+        }
+    }
+}
+
+private enum APITokenPreview {
+    static func mask(_ token: String) -> String {
+        let token = token.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard token.count > 14 else {
+            return token
+        }
+
+        return "\(token.prefix(8))...\(token.suffix(6))"
+    }
+}
+
+private struct APITokenConnectionCard: View {
+    @Binding var token: String
+    var savedTokenPreview: String?
+    var validationMessage: String?
+    var statusMessage: String
+    var statusKind: ConnectionStatusKind
+    var isWorking: Bool
+    var didCopyToken: Bool
+    var saveAction: () -> Void
+    var refreshAction: () -> Void
+    var revokeAction: () -> Void
+    var copyAction: () -> Void
+
+    private var hasSavedToken: Bool {
+        savedTokenPreview != nil
+    }
+
+    private var saveValidation: APITokenValidation {
+        APITokenValidator.validate(token.trimmingCharacters(in: .whitespacesAndNewlines))
+    }
+
+    private var canSave: Bool {
+        saveValidation == .valid && !isWorking
+    }
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 14) {
+            ConnectionStatusRow(
+                icon: "key.horizontal",
+                title: hasSavedToken ? "API token saved" : "Use an API token",
+                message: statusMessage,
+                state: statusKind
+            )
+
+            if let savedTokenPreview {
+                SavedAPITokenRow(
+                    preview: savedTokenPreview,
+                    didCopy: didCopyToken,
+                    copyAction: copyAction
+                )
+
+                HStack(spacing: 8) {
+                    ConnectionActionButton(
+                        title: isWorking ? "Checking" : "Refresh",
+                        icon: "arrow.clockwise",
+                        isEnabled: !isWorking,
+                        role: .primary,
+                        action: refreshAction
+                    )
+
+                    ConnectionActionButton(
+                        title: "Revoke",
+                        icon: "trash",
+                        isEnabled: true,
+                        role: .destructive,
+                        action: revokeAction
+                    )
+                }
+            } else {
+                VStack(alignment: .leading, spacing: 6) {
+                    SecureField("API token", text: $token)
+                        .textFieldStyle(.plain)
+                        .font(.system(size: 12, weight: .medium, design: .rounded))
+                        .padding(.horizontal, 12)
+                        .frame(maxWidth: .infinity)
+                        .frame(height: 38)
+                        .background(Color(nsColor: .textBackgroundColor), in: RoundedRectangle(cornerRadius: 10, style: .continuous))
+
+                    if let validationMessage {
+                        Text(validationMessage)
+                            .font(.system(size: 11, weight: .medium, design: .rounded))
+                            .foregroundStyle(Color(hex: "#B7791F"))
+                            .fixedSize(horizontal: false, vertical: true)
+                    }
+                }
+
+                APITokenButton(
+                    title: "Save token",
+                    icon: "checkmark.circle.fill",
+                    isEnabled: canSave,
+                    action: saveAction
+                )
+                .disabled(!canSave)
+            }
+        }
+        .padding(14)
+        .background(Color.primary.opacity(0.022), in: RoundedRectangle(cornerRadius: 13, style: .continuous))
+    }
+}
+
+private struct SavedAPITokenRow: View {
+    var preview: String
+    var didCopy: Bool
+    var copyAction: () -> Void
+
+    var body: some View {
+        HStack(spacing: 8) {
+            Text(preview)
+                .font(.system(size: 12, weight: .semibold, design: .monospaced))
+                .foregroundStyle(.primary.opacity(0.72))
+                .lineLimit(1)
+                .truncationMode(.middle)
+
+            Spacer(minLength: 8)
+
+            Button(action: copyAction) {
+                Image(systemName: didCopy ? "checkmark" : "doc.on.doc")
+                    .font(.system(size: 10, weight: .bold))
+                    .foregroundStyle(didCopy ? Color(hex: "#2CCB68") : .secondary)
+                    .frame(width: 22, height: 22)
+                    .background(Color(nsColor: .textBackgroundColor).opacity(0.72), in: Circle())
+                    .overlay {
+                        Circle()
+                            .stroke(Color.primary.opacity(0.08), lineWidth: 1)
+                    }
+            }
+            .buttonStyle(.plain)
+            .help("Copy API token")
+        }
+        .padding(.horizontal, 12)
+        .frame(maxWidth: .infinity)
+        .frame(height: 38)
+        .background(Color(nsColor: .textBackgroundColor), in: RoundedRectangle(cornerRadius: 10, style: .continuous))
     }
 }
 

@@ -393,11 +393,14 @@ public struct QuotaAccount: Codable, Hashable, Identifiable {
 
     public var copyableAccountIdentifier: String {
         let trimmedProviderID = providerAccountID?.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
-        return trimmedProviderID.isEmpty ? id.uuidString : trimmedProviderID
+        return trimmedProviderID
     }
 
     public var shortAccountIdentifier: String {
         let identifier = copyableAccountIdentifier
+        guard !identifier.isEmpty else {
+            return "Unavailable"
+        }
         guard identifier.count > 14 else {
             return identifier
         }
@@ -411,11 +414,7 @@ public struct QuotaAccount: Codable, Hashable, Identifiable {
     }
 
     public var headerDisplayName: String {
-        normalizedAccountEmail ?? name
-    }
-
-    public var usesFetchedIdentityInHeader: Bool {
-        normalizedAccountEmail != nil
+        name
     }
 
     public func widgetSnapshotAccount() -> QuotaAccount {

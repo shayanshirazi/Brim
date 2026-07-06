@@ -14,7 +14,11 @@ public struct QuotaRingView: View {
     public var surfaceStyle: QuotaRingSurfaceStyle
 
     private var connectionDotSize: CGFloat {
-        max(8, diameter * 0.18)
+        if diameter >= 64 {
+            return max(12, diameter * 0.16)
+        }
+
+        return max(7, diameter * 0.12)
     }
 
     private var innerLineWidth: CGFloat {
@@ -22,7 +26,7 @@ public struct QuotaRingView: View {
     }
 
     private var innerRingInset: CGFloat {
-        max(lineWidth * 2.3, diameter * 0.17)
+        max(lineWidth * 1.7, diameter * 0.13)
     }
 
     public init(
@@ -122,7 +126,19 @@ public struct NestedQuotaRingView: View {
     }
 
     private var connectionDotSize: CGFloat {
-        max(8, diameter * 0.18)
+        max(7, diameter * 0.13)
+    }
+
+    private var innerLineWidth: CGFloat {
+        max(5.5, diameter * 0.18)
+    }
+
+    private var innerRingInset: CGFloat {
+        max(8, diameter * 0.26)
+    }
+
+    private var railColor: Color {
+        isVibrant ? Color(hex: "#1B6F95") : Color(hex: "#173B46")
     }
 
     public init(account: QuotaAccount?, diameter: CGFloat, isSelected: Bool = false) {
@@ -135,9 +151,7 @@ public struct NestedQuotaRingView: View {
         ZStack {
             Circle()
                 .stroke(
-                    isVibrant
-                        ? Color(hex: "#1B6F95").opacity(account == nil ? 0.16 : 0.22)
-                        : Color.white.opacity(account == nil ? 0.13 : 0.22),
+                    railColor.opacity(account == nil ? 0.10 : 0.16),
                     lineWidth: 4
                 )
 
@@ -152,23 +166,19 @@ public struct NestedQuotaRingView: View {
 
                 Circle()
                     .stroke(
-                        isVibrant
-                            ? Color(hex: "#1B6F95").opacity(0.16)
-                            : Color.white.opacity(0.16),
-                        lineWidth: 7
+                        railColor.opacity(0.11),
+                        lineWidth: innerLineWidth
                     )
-                    .padding(13)
+                    .padding(innerRingInset)
 
                 Circle()
                     .trim(from: 0, to: account.hasUsageSnapshot && !account.refreshStatus.hidesQuotaDetails ? account.sessionRemainingFraction : 0)
                     .stroke(
-                        isVibrant
-                            ? Color(hex: "#1B6F95").opacity(0.70)
-                            : Color.white.opacity(0.82),
-                        style: StrokeStyle(lineWidth: 7, lineCap: .round)
+                        railColor.opacity(isVibrant ? 0.70 : 0.62),
+                        style: StrokeStyle(lineWidth: innerLineWidth, lineCap: .round)
                     )
                     .rotationEffect(.degrees(-90))
-                    .padding(13)
+                    .padding(innerRingInset)
 
                 ConnectionSignalDot(
                     state: account.signalState,
@@ -182,9 +192,7 @@ public struct NestedQuotaRingView: View {
             if isSelected {
                 Circle()
                     .stroke(
-                        isVibrant
-                            ? Color(hex: "#1B6F95").opacity(0.44)
-                            : Color.white.opacity(0.58),
+                        railColor.opacity(isVibrant ? 0.44 : 0.36),
                         lineWidth: 1.3
                     )
                     .padding(-4)

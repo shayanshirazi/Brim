@@ -154,11 +154,11 @@ private struct WidgetControls: View {
     }
 
     private var controlForeground: Color {
-        isVibrant ? Color(hex: "#24586E").opacity(0.82) : Color.white.opacity(0.82)
+        (isVibrant ? Color(hex: "#24586E") : Color(hex: "#173B46")).opacity(0.76)
     }
 
     private var controlBackground: Color {
-        isVibrant ? Color(hex: "#1B6F95").opacity(0.10) : Color.white.opacity(0.16)
+        (isVibrant ? Color(hex: "#1B6F95") : Color(hex: "#173B46")).opacity(0.08)
     }
 
     var body: some View {
@@ -185,7 +185,7 @@ private struct WidgetControls: View {
             .background(controlBackground, in: Circle())
             .overlay {
                 Circle()
-                    .stroke(Color.white.opacity(isVibrant ? 0.10 : 0.20), lineWidth: 0.8)
+                    .stroke(controlForeground.opacity(0.12), lineWidth: 0.8)
             }
     }
 }

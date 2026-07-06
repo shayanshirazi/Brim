@@ -27,7 +27,7 @@ public struct QuotaAccountSlotView: View {
     }
 
     private var labelColor: Color {
-        isVibrant ? Color(hex: "#24586E") : Color.white
+        isVibrant ? Color(hex: "#24586E") : Color(hex: "#173B46")
     }
 
     private var detailOpacity: Double {
@@ -98,7 +98,7 @@ public struct QuotaResetReadout: View {
     }
 
     private var labelColor: Color {
-        isVibrant ? Color(hex: "#24586E") : Color.white
+        isVibrant ? Color(hex: "#24586E") : Color(hex: "#173B46")
     }
 
     public var body: some View {
@@ -124,7 +124,7 @@ public struct PagerChevron: View {
     }
 
     private var chevronColor: Color {
-        isVibrant ? Color(hex: "#24586E") : Color.white
+        isVibrant ? Color(hex: "#24586E") : Color(hex: "#173B46")
     }
 
     public var body: some View {

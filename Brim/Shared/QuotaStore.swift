@@ -139,6 +139,9 @@ public final class QuotaStore: ObservableObject {
             if let accountEmail = result.accountEmail {
                 account.accountEmail = accountEmail
             }
+            if let providerAccountID = result.providerAccountID {
+                account.providerAccountID = providerAccountID
+            }
 
             if result.status == .ready {
                 account.lastSuccessfulRefreshAt = Date()
@@ -338,7 +341,12 @@ public enum QuotaWidgetCommands {
 
     private static func update(_ mutate: (inout QuotaState) -> Void) {
         let snapshotStore = QuotaWidgetSnapshotStore()
-        var state = snapshotStore.load().state
+        let loadResult = snapshotStore.load()
+        guard loadResult.status != .unavailable else {
+            return
+        }
+
+        var state = loadResult.state
         mutate(&state)
         _ = snapshotStore.save(state)
         WidgetCenter.shared.reloadAllTimelines()
@@ -347,24 +355,15 @@ public enum QuotaWidgetCommands {
 
 public struct QuotaRefreshService {
     public var apiTokenIsAvailable: (String) -> Bool
-    public var commandRunner: (String, String) async -> CommandResult
     public var usageFetcher: (QuotaAccount) async -> CodexUsageFetchOutcome
 
     public init(
         apiTokenIsAvailable: @escaping (String) -> Bool = { _ in false },
-        commandRunner: @escaping (String, String) async -> CommandResult = { _, _ in
-            CommandResult(
-                exitCode: -1,
-                standardOutput: "",
-                standardError: "Codex status runner is not configured."
-            )
-        },
         usageFetcher: @escaping (QuotaAccount) async -> CodexUsageFetchOutcome = { account in
             await CodexUsageClient().fetchUsage(for: account)
         }
     ) {
         self.apiTokenIsAvailable = apiTokenIsAvailable
-        self.commandRunner = commandRunner
         self.usageFetcher = usageFetcher
     }
 
@@ -399,60 +398,39 @@ public struct QuotaRefreshService {
 
     private func refreshCodexLogin(_ account: QuotaAccount) async -> QuotaRefreshResult {
         let profilePath = QuotaFormatting.expandedHomePath(account.resolvedProviderProfilePath)
-            do {
-                try FileManager.default.createDirectory(
-                    at: URL(fileURLWithPath: profilePath, isDirectory: true),
-                    withIntermediateDirectories: true
-                )
-            } catch {
-                return QuotaRefreshResult(
-                    status: .refreshFailed,
-                    message: "Brim could not create the Codex profile folder.",
-                    quota: nil
-                )
-            }
-
-            let result = await commandRunner(profilePath, "login status")
-            let output = (result.standardOutput + "\n" + result.standardError).lowercased()
-
-            if result.exitCode == 0, output.contains("logged in") {
-                let usageOutcome = await usageFetcher(account)
-                let usage = usageOutcome.result
-                let quota = usage?.quota ?? readLocalQuotaSnapshot(for: account)
-                return QuotaRefreshResult(
-                    status: .ready,
-                    message: quota == nil
-                        ? usageOutcome.message
-                        : (usage == nil ? "Loaded quota snapshot from local profile." : "Loaded live Codex usage."),
-                    quota: quota,
-                    accountEmail: usageOutcome.accountEmail ?? QuotaFormatting.emailAddress(in: result.standardOutput + "\n" + result.standardError)
-                )
-            }
-
-            if output.contains("not logged in") {
-                return QuotaRefreshResult(
-                    status: .notConnected,
-                    message: "Sign in with Codex to connect this account.",
-                    quota: nil
-                )
-            }
-
+        do {
+            try FileManager.default.createDirectory(
+                at: URL(fileURLWithPath: profilePath, isDirectory: true),
+                withIntermediateDirectories: true
+            )
+        } catch {
             return QuotaRefreshResult(
                 status: .refreshFailed,
-                message: commandFailureMessage(from: result),
+                message: "Brim could not create the Codex profile folder.",
                 quota: nil
             )
-    }
+        }
 
-    private func commandFailureMessage(from result: CommandResult) -> String {
-        let message = result.standardOutput.isEmpty ? result.standardError : result.standardOutput
-        let trimmed = message
-            .components(separatedBy: .newlines)
-            .map { $0.trimmingCharacters(in: .whitespacesAndNewlines) }
-            .filter { !$0.isEmpty }
-            .joined(separator: " ")
+        guard CodexProfileAuthStore.hasUsableTokens(profilePath: profilePath) else {
+            return QuotaRefreshResult(
+                status: .notConnected,
+                message: "Sign in with Codex to connect this account.",
+                quota: nil
+            )
+        }
 
-        return trimmed.isEmpty ? "Brim could not check the Codex session." : trimmed
+        let usageOutcome = await usageFetcher(account)
+        let usage = usageOutcome.result
+        let quota = usage?.quota ?? readLocalQuotaSnapshot(for: account)
+        return QuotaRefreshResult(
+            status: .ready,
+            message: quota == nil
+                ? usageOutcome.message
+                : (usage == nil ? "Loaded quota snapshot from local profile." : "Loaded live Codex usage."),
+            quota: quota,
+            accountEmail: usageOutcome.accountEmail,
+            providerAccountID: usageOutcome.accountID
+        )
     }
 
     private func readLocalQuotaSnapshot(for account: QuotaAccount) -> QuotaUsageSnapshot? {
@@ -485,12 +463,20 @@ public struct QuotaRefreshResult {
     public var message: String?
     public var quota: QuotaUsageSnapshot?
     public var accountEmail: String?
+    public var providerAccountID: String?
 
-    public init(status: QuotaRefreshStatus, message: String?, quota: QuotaUsageSnapshot?, accountEmail: String? = nil) {
+    public init(
+        status: QuotaRefreshStatus,
+        message: String?,
+        quota: QuotaUsageSnapshot?,
+        accountEmail: String? = nil,
+        providerAccountID: String? = nil
+    ) {
         self.status = status
         self.message = message
         self.quota = quota
         self.accountEmail = accountEmail
+        self.providerAccountID = providerAccountID
     }
 }
 
@@ -537,16 +523,18 @@ public struct QuotaUsageSnapshot: Codable, Hashable {
 public struct CodexUsageFetchResult: Hashable {
     public var quota: QuotaUsageSnapshot
     public var email: String?
+    public var accountID: String?
 
-    public init(quota: QuotaUsageSnapshot, email: String? = nil) {
+    public init(quota: QuotaUsageSnapshot, email: String? = nil, accountID: String? = nil) {
         self.quota = quota
         self.email = email
+        self.accountID = accountID
     }
 }
 
 public enum CodexUsageFetchOutcome: Hashable {
     case success(CodexUsageFetchResult)
-    case unavailable(String, accountEmail: String?)
+    case unavailable(String, accountEmail: String?, accountID: String? = nil)
 
     public var result: CodexUsageFetchResult? {
         switch self {
@@ -561,8 +549,17 @@ public enum CodexUsageFetchOutcome: Hashable {
         switch self {
         case .success(let result):
             return result.email
-        case .unavailable(_, let accountEmail):
+        case .unavailable(_, let accountEmail, _):
             return accountEmail
+        }
+    }
+
+    public var accountID: String? {
+        switch self {
+        case .success(let result):
+            return result.accountID
+        case .unavailable(_, _, let accountID):
+            return accountID
         }
     }
 
@@ -570,9 +567,46 @@ public enum CodexUsageFetchOutcome: Hashable {
         switch self {
         case .success:
             return "Loaded live Codex usage."
-        case .unavailable(let message, _):
+        case .unavailable(let message, _, _):
             return message
         }
+    }
+}
+
+private enum CodexUsageFailureReason {
+    case unauthorized
+    case other
+}
+
+private enum CodexUsageRequestOutcome {
+    case success(CodexUsageFetchResult)
+    case unavailable(String, accountEmail: String?, accountID: String?, failureReason: CodexUsageFailureReason)
+
+    var failureReason: CodexUsageFailureReason? {
+        switch self {
+        case .success:
+            return nil
+        case .unavailable(_, _, _, let failureReason):
+            return failureReason
+        }
+    }
+
+    var publicOutcome: CodexUsageFetchOutcome {
+        switch self {
+        case .success(let result):
+            return .success(result)
+        case .unavailable(let message, let accountEmail, let accountID, _):
+            return .unavailable(message, accountEmail: accountEmail, accountID: accountID)
+        }
+    }
+
+    static func failure(
+        _ message: String,
+        accountEmail: String?,
+        accountID: String?,
+        failureReason: CodexUsageFailureReason = .other
+    ) -> CodexUsageRequestOutcome {
+        .unavailable(message, accountEmail: accountEmail, accountID: accountID, failureReason: failureReason)
     }
 }
 
@@ -595,8 +629,40 @@ public struct CodexUsageClient {
     }
 
     public func fetchUsage(for account: QuotaAccount) async -> CodexUsageFetchOutcome {
-        guard let token = accessToken(for: account) else {
-            return .unavailable("Codex is connected, but Brim could not find this profile's auth token.", accountEmail: nil)
+        let profilePath = QuotaFormatting.expandedHomePath(account.resolvedProviderProfilePath)
+        let auth = CodexProfileAuthStore.tokens(profilePath: profilePath, fileManager: fileManager)
+        guard let token = auth?.accessToken, !token.isEmpty else {
+            guard let refreshedAuth = await refreshAuthIfPossible(auth, profilePath: profilePath) else {
+                return CodexUsageRequestOutcome.failure(
+                    "Codex is connected, but Brim could not find this profile's auth token.",
+                    accountEmail: nil,
+                    accountID: auth?.accountID
+                ).publicOutcome
+            }
+
+            return await fetchUsage(for: account, auth: refreshedAuth, didRefreshToken: true).publicOutcome
+        }
+
+        let outcome = await fetchUsage(for: account, auth: auth, didRefreshToken: false)
+        if case .unauthorized = outcome.failureReason,
+           let refreshedAuth = await refreshAuthIfPossible(auth, profilePath: profilePath) {
+            return await fetchUsage(for: account, auth: refreshedAuth, didRefreshToken: true).publicOutcome
+        }
+
+        return outcome.publicOutcome
+    }
+
+    private func fetchUsage(
+        for account: QuotaAccount,
+        auth: CodexAuthTokens?,
+        didRefreshToken: Bool
+    ) async -> CodexUsageRequestOutcome {
+        guard let token = auth?.accessToken, !token.isEmpty else {
+            return .failure(
+                "Codex is connected, but Brim could not find this profile's auth token.",
+                accountEmail: nil,
+                accountID: auth?.accountID
+            )
         }
 
         var request = URLRequest(url: usageURL)
@@ -611,37 +677,67 @@ public struct CodexUsageClient {
                 200..<300 ~= httpResponse.statusCode
             else {
                 let statusCode = (response as? HTTPURLResponse)?.statusCode ?? -1
-                return .unavailable("Codex usage request failed with HTTP \(statusCode).", accountEmail: nil)
+                let message = didRefreshToken && statusCode == 401
+                    ? "Codex session expired. Sign in with Codex again."
+                    : "Codex usage request failed with HTTP \(statusCode)."
+                return .failure(
+                    message,
+                    accountEmail: nil,
+                    accountID: auth?.accountID,
+                    failureReason: statusCode == 401 ? .unauthorized : .other
+                )
             }
 
             let usage = try JSONDecoder().decode(CodexUsageResponse.self, from: data)
             guard let quota = quotaSnapshot(from: usage) else {
-                return .unavailable(
+                return .failure(
                     "Codex usage response did not include rate-limit data Brim understands.",
-                    accountEmail: usage.email
+                    accountEmail: usage.email,
+                    accountID: auth?.accountID
                 )
             }
 
-            return .success(CodexUsageFetchResult(quota: quota, email: usage.email))
+            return .success(CodexUsageFetchResult(quota: quota, email: usage.email, accountID: auth?.accountID))
         } catch {
-            return .unavailable("Codex usage request failed: \(error.localizedDescription)", accountEmail: nil)
+            return .failure("Codex usage request failed: \(error.localizedDescription)", accountEmail: nil, accountID: auth?.accountID)
         }
     }
 
-    private func accessToken(for account: QuotaAccount) -> String? {
-        let profilePath = QuotaFormatting.expandedHomePath(account.resolvedProviderProfilePath)
-        let authURL = URL(fileURLWithPath: profilePath, isDirectory: true).appendingPathComponent("auth.json")
-        guard
-            fileManager.fileExists(atPath: authURL.path),
-            let data = try? Data(contentsOf: authURL),
-            let auth = try? JSONDecoder().decode(CodexAuthFile.self, from: data),
-            let token = auth.tokens?.accessToken,
-            !token.isEmpty
-        else {
+    private func refreshAuthIfPossible(_ auth: CodexAuthTokens?, profilePath: String) async -> CodexAuthTokens? {
+        guard let auth, let refreshToken = auth.refreshToken, !refreshToken.isEmpty else {
             return nil
         }
 
-        return token
+        var request = URLRequest(url: CodexOAuthContract.tokenURL)
+        request.httpMethod = "POST"
+        request.setValue("application/x-www-form-urlencoded", forHTTPHeaderField: "Content-Type")
+        request.httpBody = CodexOAuthContract.formBody([
+            "grant_type": "refresh_token",
+            "refresh_token": refreshToken,
+            "client_id": CodexOAuthContract.clientID
+        ])
+
+        do {
+            let (data, response) = try await session.data(for: request)
+            guard
+                let httpResponse = response as? HTTPURLResponse,
+                200..<300 ~= httpResponse.statusCode
+            else {
+                return nil
+            }
+
+            guard let refreshed = try JSONDecoder().decode(CodexTokenResponse.self, from: data)
+                .codexTokens?
+                .mergingMissingValues(from: auth)
+            else {
+                return nil
+            }
+
+            try CodexProfileAuthStore.save(tokens: refreshed, profilePath: profilePath, fileManager: fileManager)
+            return refreshed
+        } catch {
+            return nil
+        }
     }
 
     private func quotaSnapshot(from usage: CodexUsageResponse) -> QuotaUsageSnapshot? {
@@ -689,16 +785,211 @@ public struct CodexUsageClient {
     }
 }
 
-private struct CodexAuthFile: Decodable {
-    var tokens: CodexAuthTokens?
+enum CodexOAuthContract {
+    static let clientID = "app_EMoamEEZ73f0CkXaXp7hrann"
+    static let authBaseURL = URL(string: "https://auth.openai.com/oauth/authorize")!
+    static let tokenURL = URL(string: "https://auth.openai.com/oauth/token")!
+    static let scope = "openid profile email offline_access api.connectors.read api.connectors.invoke"
+
+    static func authorizationURL(
+        redirectURI: String,
+        codeChallenge: String,
+        state: String
+    ) -> URL? {
+        let queryFields = [
+            ("response_type", "code"),
+            ("client_id", clientID),
+            ("redirect_uri", redirectURI),
+            ("scope", scope),
+            ("code_challenge", codeChallenge),
+            ("code_challenge_method", "S256"),
+            ("id_token_add_organizations", "true"),
+            ("codex_cli_simplified_flow", "true"),
+            ("state", state),
+            ("originator", "Codex Desktop")
+        ]
+        var components = URLComponents(url: authBaseURL, resolvingAgainstBaseURL: false)
+        components?.percentEncodedQuery = percentEncodedQuery(queryFields)
+        return components?.url
+    }
+
+    static func formBody(_ fields: [String: String]) -> Data {
+        Data(percentEncodedQuery(fields.map { ($0.key, $0.value) }).utf8)
+    }
+
+    static func percentEncodedQuery(_ fields: [(String, String)]) -> String {
+        fields
+            .map { "\(percentEncode($0.0))=\(percentEncode($0.1))" }
+            .joined(separator: "&")
+    }
+
+    private static func percentEncode(_ value: String) -> String {
+        let unreserved = CharacterSet(charactersIn: "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789-._~")
+        return value.addingPercentEncoding(withAllowedCharacters: unreserved) ?? value
+    }
 }
 
-private struct CodexAuthTokens: Decodable {
+struct CodexTokenResponse: Decodable {
     var accessToken: String?
+    var refreshToken: String?
+    var idToken: String?
+    var accountID: String?
+    var tokens: CodexAuthTokens?
+
+    var codexTokens: CodexAuthTokens? {
+        if let tokens {
+            return tokens.hasUsableToken ? tokens : nil
+        }
+
+        let directTokens = CodexAuthTokens(
+            accessToken: accessToken,
+            refreshToken: refreshToken,
+            idToken: idToken,
+            accountID: accountID
+        )
+        return directTokens.hasUsableToken ? directTokens : nil
+    }
 
     private enum CodingKeys: String, CodingKey {
         case accessToken = "access_token"
+        case refreshToken = "refresh_token"
+        case idToken = "id_token"
+        case accountID = "account_id"
+        case tokens
     }
+}
+
+enum CodexProfileAuthStore {
+    static func hasAccessToken(profilePath: String, fileManager: FileManager = .default) -> Bool {
+        guard let accessToken = tokens(profilePath: profilePath, fileManager: fileManager)?.accessToken else {
+            return false
+        }
+
+        return !accessToken.isEmpty
+    }
+
+    static func hasUsableTokens(profilePath: String, fileManager: FileManager = .default) -> Bool {
+        tokens(profilePath: profilePath, fileManager: fileManager)?.hasUsableToken == true
+    }
+
+    static func tokens(profilePath: String, fileManager: FileManager = .default) -> CodexAuthTokens? {
+        let authURL = authURL(profilePath: profilePath)
+        guard
+            fileManager.fileExists(atPath: authURL.path),
+            let data = try? Data(contentsOf: authURL),
+            let auth = try? JSONDecoder().decode(CodexAuthFile.self, from: data)
+        else {
+            return nil
+        }
+
+        return auth.tokens
+    }
+
+    static func removeAuth(profilePath: String, fileManager: FileManager = .default) throws {
+        let authURL = authURL(profilePath: profilePath)
+        guard fileManager.fileExists(atPath: authURL.path) else {
+            return
+        }
+
+        try fileManager.removeItem(at: authURL)
+    }
+
+    static func save(tokens: CodexAuthTokens, profilePath: String, fileManager: FileManager = .default) throws {
+        let authURL = authURL(profilePath: profilePath)
+        try fileManager.createDirectory(at: authURL.deletingLastPathComponent(), withIntermediateDirectories: true)
+
+        let auth = CodexAuthFile(
+            openAIAPIKey: nil,
+            authMode: "chatgpt",
+            lastRefresh: ISO8601DateFormatter.brimCodex.string(from: Date()),
+            tokens: tokens
+        )
+        let encoder = JSONEncoder()
+        encoder.outputFormatting = [.prettyPrinted, .sortedKeys]
+        let data = try encoder.encode(auth)
+        try data.write(to: authURL, options: [.atomic])
+    }
+
+    private static func authURL(profilePath: String) -> URL {
+        URL(fileURLWithPath: profilePath, isDirectory: true).appendingPathComponent("auth.json")
+    }
+}
+
+struct CodexAuthFile: Codable {
+    var openAIAPIKey: String?
+    var authMode: String?
+    var lastRefresh: String?
+    var tokens: CodexAuthTokens?
+
+    init(
+        openAIAPIKey: String? = nil,
+        authMode: String? = nil,
+        lastRefresh: String? = nil,
+        tokens: CodexAuthTokens? = nil
+    ) {
+        self.openAIAPIKey = openAIAPIKey
+        self.authMode = authMode
+        self.lastRefresh = lastRefresh
+        self.tokens = tokens
+    }
+
+    private enum CodingKeys: String, CodingKey {
+        case openAIAPIKey = "OPENAI_API_KEY"
+        case authMode = "auth_mode"
+        case lastRefresh = "last_refresh"
+        case tokens
+    }
+}
+
+struct CodexAuthTokens: Codable {
+    var accessToken: String?
+    var refreshToken: String?
+    var idToken: String?
+    var accountID: String?
+
+    var hasAccessToken: Bool {
+        guard let accessToken else {
+            return false
+        }
+
+        return !accessToken.isEmpty
+    }
+
+    var hasRefreshToken: Bool {
+        guard let refreshToken else {
+            return false
+        }
+
+        return !refreshToken.isEmpty
+    }
+
+    var hasUsableToken: Bool {
+        hasAccessToken || hasRefreshToken
+    }
+
+    func mergingMissingValues(from olderTokens: CodexAuthTokens) -> CodexAuthTokens {
+        CodexAuthTokens(
+            accessToken: accessToken ?? olderTokens.accessToken,
+            refreshToken: refreshToken ?? olderTokens.refreshToken,
+            idToken: idToken ?? olderTokens.idToken,
+            accountID: accountID ?? olderTokens.accountID
+        )
+    }
+
+    private enum CodingKeys: String, CodingKey {
+        case accessToken = "access_token"
+        case refreshToken = "refresh_token"
+        case idToken = "id_token"
+        case accountID = "account_id"
+    }
+}
+
+private extension ISO8601DateFormatter {
+    static let brimCodex: ISO8601DateFormatter = {
+        let formatter = ISO8601DateFormatter()
+        formatter.formatOptions = [.withInternetDateTime, .withFractionalSeconds]
+        return formatter
+    }()
 }
 
 private struct CodexUsageResponse: Decodable {

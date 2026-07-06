@@ -181,7 +181,9 @@ final class QuotaTransferTests: XCTestCase {
             isAccountTextHidden: false,
             widgetPageIndex: 0
         )
-        let data = try JSONEncoder().encode(payload)
+        let encoder = JSONEncoder()
+        encoder.dateEncodingStrategy = .iso8601
+        let data = try encoder.encode(payload)
 
         XCTAssertThrowsError(try QuotaAccountsTransferPayload.importedState(from: data)) { error in
             XCTAssertEqual(error as? QuotaAccountsTransferError, .unsupportedVersion(2))
@@ -192,7 +194,7 @@ final class QuotaTransferTests: XCTestCase {
         let profileURL = URL(fileURLWithPath: NSTemporaryDirectory(), isDirectory: true)
             .appendingPathComponent("brim-codex-profile-\(UUID().uuidString)", isDirectory: true)
         try FileManager.default.createDirectory(at: profileURL, withIntermediateDirectories: true)
-        try Data(#"{"tokens":{"access_token":"test-token"}}"#.utf8)
+        try Data(#"{"tokens":{"access_token":"test-token","account_id":"session-789"}}"#.utf8)
             .write(to: profileURL.appendingPathComponent("auth.json"))
 
         URLProtocolMock.requestHandler = { request in
@@ -250,6 +252,7 @@ final class QuotaTransferTests: XCTestCase {
         }
 
         XCTAssertEqual(result.email, "live@example.com")
+        XCTAssertEqual(result.accountID, "session-789")
         XCTAssertEqual(result.quota.sessionUsedPercent, 16)
         XCTAssertEqual(result.quota.weeklyUsedPercent, 60)
         XCTAssertEqual(result.quota.sessionLimitMinutes, 300)

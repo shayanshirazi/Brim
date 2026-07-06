@@ -1060,7 +1060,7 @@ private struct TransferSettingsTab: View {
 
             Spacer(minLength: 0)
 
-            HStack(spacing: 16) {
+            HStack(spacing: 24) {
                 TransferAction(
                     icon: "square.and.arrow.up",
                     title: "Export JSON",
@@ -1077,8 +1077,8 @@ private struct TransferSettingsTab: View {
                     action: importAccounts
                 )
             }
-            .padding(.horizontal, 38)
-            .frame(maxWidth: 430)
+            .padding(.horizontal, 30)
+            .frame(maxWidth: 470)
             .frame(maxWidth: .infinity, alignment: .center)
 
             Spacer(minLength: 0)
@@ -1113,11 +1113,11 @@ private struct TransferAction: View {
 
     var body: some View {
         Button(action: action) {
-            VStack(spacing: 12) {
+            VStack(spacing: 14) {
                 Image(systemName: icon)
-                    .font(.system(size: 22, weight: .semibold))
+                    .font(.system(size: 24, weight: .semibold))
                     .foregroundStyle(color)
-                    .frame(width: 44, height: 44)
+                    .frame(width: 50, height: 50)
                     .background(color.opacity(0.13), in: Circle())
 
                 VStack(spacing: 5) {
@@ -1132,7 +1132,7 @@ private struct TransferAction: View {
                         .fixedSize(horizontal: false, vertical: true)
                 }
             }
-            .frame(width: 142, height: 142, alignment: .center)
+            .frame(width: 154, height: 154, alignment: .center)
             .background(
                 LinearGradient(
                     colors: [color.opacity(0.11), Color.primary.opacity(0.035)],
@@ -1147,7 +1147,7 @@ private struct TransferAction: View {
             }
         }
         .buttonStyle(.plain)
-        .frame(width: 142, height: 142)
+        .frame(width: 154, height: 154)
     }
 }
 

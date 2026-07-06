@@ -113,6 +113,15 @@ private struct HeaderPanel: View {
             VStack(alignment: .leading, spacing: 9) {
                 nameEditor
 
+                if let accountEmail = account.normalizedAccountEmail {
+                    Text(accountEmail)
+                        .font(.system(size: 13, weight: .medium))
+                        .foregroundStyle(.secondary)
+                        .lineLimit(1)
+                        .truncationMode(.middle)
+                        .frame(maxWidth: 320, alignment: .leading)
+                }
+
                 AccountIdentifierRow(account: account)
             }
             .frame(maxHeight: .infinity, alignment: .center)
@@ -232,25 +241,23 @@ private struct HeaderPanel: View {
                     .minimumScaleFactor(0.72)
             }
 
-            if !account.usesFetchedIdentityInHeader || isEditingName {
-                Button(action: isEditingName ? commitName : beginEditingName) {
-                    Image(systemName: isEditingName ? "checkmark" : "pencil.tip")
-                        .font(.system(size: isEditingName ? 11 : 13, weight: .bold))
-                        .foregroundStyle(isEditingName ? Color(hex: account.colorHex) : .primary.opacity(0.56))
-                        .frame(width: 26, height: 26)
-                        .background(
-                            Color(nsColor: .textBackgroundColor).opacity(0.72),
-                            in: Circle()
-                        )
-                        .overlay {
-                            Circle()
-                                .stroke(Color.primary.opacity(0.08), lineWidth: 1)
-                        }
-                }
-                .buttonStyle(.plain)
-                .help(isEditingName ? "Save account name" : "Edit account name")
-                .offset(y: -1)
+            Button(action: isEditingName ? commitName : beginEditingName) {
+                Image(systemName: isEditingName ? "checkmark" : "pencil.tip")
+                    .font(.system(size: isEditingName ? 11 : 13, weight: .bold))
+                    .foregroundStyle(isEditingName ? Color(hex: account.colorHex) : .primary.opacity(0.56))
+                    .frame(width: 26, height: 26)
+                    .background(
+                        Color(nsColor: .textBackgroundColor).opacity(0.72),
+                        in: Circle()
+                    )
+                    .overlay {
+                        Circle()
+                            .stroke(Color.primary.opacity(0.08), lineWidth: 1)
+                    }
             }
+            .buttonStyle(.plain)
+            .help(isEditingName ? "Save account name" : "Edit account name")
+            .offset(y: -1)
         }
     }
 
@@ -278,10 +285,13 @@ private struct HeaderPanel: View {
 private struct AccountIdentifierRow: View {
     var account: QuotaAccount
     @State private var didCopy = false
+    private var canCopyIdentifier: Bool {
+        !account.copyableAccountIdentifier.isEmpty
+    }
 
     var body: some View {
         HStack(spacing: 7) {
-            Text("ID \(account.shortAccountIdentifier)")
+            Text("Session ID \(account.shortAccountIdentifier)")
                 .font(.system(size: 12, weight: .semibold, design: .monospaced))
                 .foregroundStyle(.secondary)
                 .lineLimit(1)
@@ -290,7 +300,7 @@ private struct AccountIdentifierRow: View {
             Button(action: copyIdentifier) {
                 Image(systemName: didCopy ? "checkmark" : "doc.on.doc")
                     .font(.system(size: 10, weight: .bold))
-                    .foregroundStyle(didCopy ? Color(hex: account.colorHex) : .secondary)
+                    .foregroundStyle(copyIconColor)
                     .frame(width: 22, height: 22)
                     .background(Color(nsColor: .textBackgroundColor).opacity(0.68), in: Circle())
                     .overlay {
@@ -299,12 +309,25 @@ private struct AccountIdentifierRow: View {
                     }
             }
             .buttonStyle(.plain)
-            .help("Copy account ID")
+            .disabled(!canCopyIdentifier)
+            .help("Copy session ID")
         }
         .frame(maxWidth: 280, alignment: .leading)
     }
 
+    private var copyIconColor: Color {
+        if didCopy {
+            return Color(hex: account.colorHex)
+        }
+
+        return canCopyIdentifier ? Color.secondary : Color.secondary.opacity(0.42)
+    }
+
     private func copyIdentifier() {
+        guard canCopyIdentifier else {
+            return
+        }
+
         NSPasteboard.general.clearContents()
         NSPasteboard.general.setString(account.copyableAccountIdentifier, forType: .string)
         didCopy = true

@@ -49,34 +49,40 @@ public struct QuotaWidgetContent: View {
                 BrimBackground(cornerRadius: family.cornerRadius)
             }
 
-            HStack(spacing: family.pagerSpacing) {
-                renderedPager(.left, showsPager: showsPager)
+            if accounts.isEmpty {
+                QuotaWidgetEmptyState(family: family)
+            } else {
+                HStack(spacing: family.pagerSpacing) {
+                    renderedPager(.left, showsPager: showsPager)
 
-                HStack(spacing: family.accountSpacing) {
-                    ForEach(Array(visibleAccounts.enumerated()), id: \.offset) { _, account in
-                        if let account {
-                            let slot = QuotaAccountSlotView(
-                                account: account,
-                                family: family,
-                                isSelected: account.id == page.selectedAccount?.id,
-                                isTextHidden: isAccountTextHidden
-                            )
-                            accountSlotDecorator(account, slot)
-                        } else {
-                            QuotaAccountSlotView(account: nil, family: family)
+                    HStack(spacing: family.accountSpacing) {
+                        ForEach(Array(visibleAccounts.enumerated()), id: \.offset) { _, account in
+                            if let account {
+                                let slot = QuotaAccountSlotView(
+                                    account: account,
+                                    family: family,
+                                    isSelected: account.id == page.selectedAccount?.id,
+                                    isTextHidden: isAccountTextHidden
+                                )
+                                accountSlotDecorator(account, slot)
+                            } else {
+                                QuotaAccountSlotView(account: nil, family: family)
+                            }
                         }
                     }
+
+                    renderedPager(.right, showsPager: showsPager)
                 }
-
-                renderedPager(.right, showsPager: showsPager)
+                .padding(.horizontal, family.horizontalPadding)
+                .padding(.top, family.verticalPadding)
+                .padding(.bottom, family.accountRowBottomPadding)
             }
-            .padding(.horizontal, family.horizontalPadding)
-            .padding(.top, family.verticalPadding)
-            .padding(.bottom, family.accountRowBottomPadding)
 
-            controls()
-                .padding(.bottom, family.controlButtonPadding)
-                .padding(.trailing, family.controlButtonPadding)
+            if !accounts.isEmpty {
+                controls()
+                    .padding(.bottom, family.controlButtonPadding)
+                    .padding(.trailing, family.controlButtonPadding)
+            }
         }
     }
 
@@ -89,6 +95,70 @@ public struct QuotaWidgetContent: View {
                 chevron
             }
         }
+    }
+}
+
+private struct QuotaWidgetEmptyState: View {
+    @Environment(\.widgetRenderingMode) private var widgetRenderingMode
+
+    var family: WidgetFamilyShape
+
+    private var isVibrant: Bool {
+        widgetRenderingMode == .vibrant
+    }
+
+    private var foreground: Color {
+        isVibrant ? Color(hex: "#24586E") : Color(hex: "#173B46")
+    }
+
+    var body: some View {
+        Group {
+            if let accountsURL = URL(string: AppRoute.accounts.urlString) {
+                Link(destination: accountsURL) {
+                    content
+                }
+                .buttonStyle(.plain)
+            } else {
+                content
+            }
+        }
+        .widgetAccentable(false)
+    }
+
+    private var content: some View {
+        VStack(spacing: family == .small ? 7 : 9) {
+            ZStack {
+                Circle()
+                    .stroke(foreground.opacity(0.12), lineWidth: 5)
+                Circle()
+                    .stroke(
+                        Color(hex: "#2CCB68"),
+                        style: StrokeStyle(lineWidth: 5, lineCap: .round)
+                    )
+                    .rotationEffect(.degrees(-90))
+                Circle()
+                    .fill(Color(hex: "#2CCB68"))
+                    .frame(width: 10, height: 10)
+                    .shadow(color: Color(hex: "#2CCB68").opacity(0.28), radius: 5)
+            }
+            .frame(width: family == .small ? 44 : 48, height: family == .small ? 44 : 48)
+
+            Text("Open Brim")
+                .font(.system(size: family == .small ? 12 : 13, weight: .bold, design: .rounded))
+                .foregroundStyle(foreground.opacity(0.88))
+                .lineLimit(1)
+                .minimumScaleFactor(0.8)
+
+            if family == .medium {
+                Text("Local widget data is private")
+                    .font(.system(size: 10, weight: .semibold, design: .rounded))
+                    .foregroundStyle(foreground.opacity(0.48))
+                    .lineLimit(1)
+                    .minimumScaleFactor(0.78)
+            }
+        }
+        .frame(maxWidth: .infinity, maxHeight: .infinity)
+        .contentShape(Rectangle())
     }
 }
 

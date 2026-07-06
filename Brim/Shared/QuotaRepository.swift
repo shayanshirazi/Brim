@@ -1,9 +1,7 @@
 import Foundation
 
 public enum BrimStorage {
-    public static let widgetSnapshotAppGroup = "group.dev.brim"
     private static let previousProductKey = ["ha", "lo"].joined()
-    public static let previousWidgetSnapshotAppGroup = "group.dev.\(previousProductKey)"
     public static let previousApplicationSupportDirectoryName = previousProductKey.capitalized
 
     public static func previousKey(_ suffix: String) -> String {
@@ -155,16 +153,7 @@ public struct QuotaWidgetSnapshotStore {
         previousFallbackURL = applicationSupportURL
             .appendingPathComponent(BrimStorage.previousApplicationSupportDirectoryName, isDirectory: true)
             .appendingPathComponent("widget-snapshot.json")
-
-        guard let defaults = UserDefaults(suiteName: BrimStorage.widgetSnapshotAppGroup) else {
-            repository = nil
-            return
-        }
-
-        repository = QuotaRepository(
-            defaults: defaults,
-            previousDefaults: UserDefaults(suiteName: BrimStorage.previousWidgetSnapshotAppGroup)
-        )
+        repository = nil
     }
 
     init(repository: QuotaRepository?, fallbackURL: URL, previousFallbackURL: URL? = nil) {

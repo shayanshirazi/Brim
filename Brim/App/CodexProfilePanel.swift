@@ -11,6 +11,12 @@ struct ProviderProfilePanel: View {
     @State private var showsProfileLocation = false
     @AppStorage(BrimRefreshInterval.storageKey) private var refreshIntervalSeconds = BrimRefreshInterval.defaultSeconds
     var openPersonalizationSettings: () -> Void
+    private let ignoredLoginFailureMessageFragments = [
+        "WARNING: proceeding",
+        "PATH aliases",
+        "Error loading configuration",
+        "CODEX_HOME points"
+    ]
 
     init(
         account: Binding<QuotaAccount>,
@@ -76,9 +82,9 @@ struct ProviderProfilePanel: View {
             } else {
                 VStack(alignment: .leading, spacing: 12) {
                     ProviderConnectionCard(
-                        state: resolvedLoginFlowState,
+                        state: visibleLoginFlowState,
                         provider: account.provider,
-                        primaryAction: resolvedLoginFlowState == .connected ? checkProviderLogin : startProviderLogin,
+                        primaryAction: visibleLoginFlowState == .connected ? checkProviderLogin : startProviderLogin,
                         logoutAction: confirmProviderLogout
                     )
 
@@ -142,7 +148,7 @@ struct ProviderProfilePanel: View {
         .tint(.secondary)
     }
 
-    private var resolvedLoginFlowState: ProviderLoginFlowState {
+    private var visibleLoginFlowState: ProviderLoginFlowState {
         if loginFlowState.isWorking {
             return loginFlowState
         }
@@ -189,8 +195,8 @@ struct ProviderProfilePanel: View {
             }
 
             loginFlowState = .checking
-            let statusResult = await CodexCommandRunner.run(profilePath: expandedProfilePath, subcommand: "login status")
-            if applyLoginStatus(statusResult) {
+            let loginStatusResult = await CodexCommandRunner.run(profilePath: expandedProfilePath, subcommand: "login status")
+            if applyProviderLoginStatus(loginStatusResult) {
                 await store.refreshAccount(id: account.id)
                 loginFlowState = .connected
             }
@@ -206,8 +212,8 @@ struct ProviderProfilePanel: View {
 
         Task {
             let expandedProfilePath = QuotaFormatting.expandedHomePath(profilePath)
-            let statusResult = await CodexCommandRunner.run(profilePath: expandedProfilePath, subcommand: "login status")
-            if applyPingStatus(statusResult) {
+            let loginStatusResult = await CodexCommandRunner.run(profilePath: expandedProfilePath, subcommand: "login status")
+            if applyProviderLoginStatus(loginStatusResult) {
                 await store.refreshAccount(id: account.id)
                 loginFlowState = .connected
             }
@@ -280,36 +286,17 @@ struct ProviderProfilePanel: View {
     }
 
     @discardableResult
-    private func applyLoginStatus(_ result: CommandResult) -> Bool {
-        if isLoggedIn(result) {
-            account.connectionKind = .login
-            if let email = emailAddress(from: result) {
-                account.accountEmail = email
-            }
-            account.refreshStatus = .ready
-            account.refreshMessage = "\(account.provider.displayName) login is connected. Exact usage opens in \(account.provider.displayName)."
-            account.lastSuccessfulRefreshAt = Date()
-            loginFlowState = .connected
-            return true
-        } else if isNotLoggedIn(result) {
-            account.connectionKind = .login
-            account.hasUsageSnapshot = false
-            account.refreshStatus = .notConnected
-            account.refreshMessage = "Sign in with \(account.provider.displayName) to connect this account."
-            loginFlowState = .idle
-            return false
-        } else {
-            markLoginFailure(result)
-            return false
-        }
-    }
-
-    @discardableResult
-    private func applyPingStatus(_ result: CommandResult) -> Bool {
+    private func applyProviderLoginStatus(_ loginStatusResult: CommandResult) -> Bool {
         account.connectionKind = .login
+        let loginStatus = CodexLoginStatusClassifier.status(
+            from: loginStatusResult,
+            fallbackFailureMessage: "\(account.provider.displayName) login did not complete.",
+            ignoredFailureMessageFragments: ignoredLoginFailureMessageFragments
+        )
 
-        if isLoggedIn(result) {
-            if let email = emailAddress(from: result) {
+        switch loginStatus {
+        case .loggedIn(let email):
+            if let email {
                 account.accountEmail = email
             }
             account.refreshStatus = .ready
@@ -317,54 +304,31 @@ struct ProviderProfilePanel: View {
             account.lastSuccessfulRefreshAt = Date()
             loginFlowState = .connected
             return true
-        } else if isNotLoggedIn(result) {
+        case .notLoggedIn:
             account.hasUsageSnapshot = false
             account.refreshStatus = .notConnected
             account.refreshMessage = "Sign in with \(account.provider.displayName) to connect this account."
             loginFlowState = .idle
             return false
-        } else {
-            markLoginFailure(result)
+        case .failed(let message):
+            markLoginFailure(message)
             return false
         }
     }
 
-    private func markLoginFailure(_ result: CommandResult) {
-        let message = commandMessage(from: result)
+    private func markLoginFailure(_ commandResult: CommandResult) {
+        let message = CodexLoginStatusClassifier.commandMessage(
+            from: commandResult,
+            fallbackMessage: "\(account.provider.displayName) login did not complete.",
+            ignoredFragments: ignoredLoginFailureMessageFragments
+        )
+        markLoginFailure(message)
+    }
+
+    private func markLoginFailure(_ message: String) {
         account.refreshStatus = .refreshFailed
         account.refreshMessage = message
         loginFlowState = .failed(message)
-    }
-
-    private func isLoggedIn(_ result: CommandResult) -> Bool {
-        let output = (result.standardOutput + "\n" + result.standardError).lowercased()
-        return result.exitCode == 0 && output.contains("logged in")
-    }
-
-    private func emailAddress(from result: CommandResult) -> String? {
-        QuotaFormatting.emailAddress(in: result.standardOutput + "\n" + result.standardError)
-    }
-
-    private func isNotLoggedIn(_ result: CommandResult) -> Bool {
-        let output = (result.standardOutput + "\n" + result.standardError).lowercased()
-        return output.contains("not logged in")
-    }
-
-    private func commandMessage(from result: CommandResult) -> String {
-        let message = result.standardOutput.isEmpty ? result.standardError : result.standardOutput
-        let lines = message
-            .components(separatedBy: .newlines)
-            .map { $0.trimmingCharacters(in: .whitespacesAndNewlines) }
-            .filter { line in
-                !line.isEmpty
-                    && !line.localizedCaseInsensitiveContains("WARNING: proceeding")
-                    && !line.localizedCaseInsensitiveContains("PATH aliases")
-                    && !line.localizedCaseInsensitiveContains("Error loading configuration")
-                    && !line.localizedCaseInsensitiveContains("CODEX_HOME points")
-            }
-
-        let trimmed = lines.joined(separator: " ").trimmingCharacters(in: .whitespacesAndNewlines)
-        return trimmed.isEmpty ? "\(account.provider.displayName) login did not complete." : trimmed
     }
 }
 

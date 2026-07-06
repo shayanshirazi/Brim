@@ -15,7 +15,6 @@
 		000000000000000000000006 /* Assets.xcassets in Resources */ = {isa = PBXBuildFile; fileRef = 000000000000000000000106 /* Assets.xcassets */; };
 		000000000000000000000007 /* BrimWidget.swift in Sources */ = {isa = PBXBuildFile; fileRef = 000000000000000000000107 /* BrimWidget.swift */; };
 		000000000000000000000008 /* QuotaAccount.swift in Sources */ = {isa = PBXBuildFile; fileRef = 000000000000000000000103 /* QuotaAccount.swift */; };
-		000000000000000000000009 /* QuotaStore.swift in Sources */ = {isa = PBXBuildFile; fileRef = 000000000000000000000104 /* QuotaStore.swift */; };
 		00000000000000000000000A /* QuotaRingView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 000000000000000000000105 /* QuotaRingView.swift */; };
 		00000000000000000000000B /* Assets.xcassets in Resources */ = {isa = PBXBuildFile; fileRef = 000000000000000000000108 /* Assets.xcassets */; };
 		00000000000000000000000C /* BrimWidget.appex in Embed App Extensions */ = {isa = PBXBuildFile; fileRef = 000000000000000000000201 /* BrimWidget.appex */; settings = {ATTRIBUTES = (CodeSignOnCopy, RemoveHeadersOnCopy, ); }; };
@@ -52,6 +51,18 @@
 		00000000000000000000002B /* QuotaRefreshServiceTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 000000000000000000000120 /* QuotaRefreshServiceTests.swift */; };
 		00000000000000000000002C /* FirstRunOnboardingView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 000000000000000000000121 /* FirstRunOnboardingView.swift */; };
 		00000000000000000000002D /* AddAccountSheet.swift in Sources */ = {isa = PBXBuildFile; fileRef = 000000000000000000000122 /* AddAccountSheet.swift */; };
+		00000000000000000000002E /* CodexLoginStatus.swift in Sources */ = {isa = PBXBuildFile; fileRef = 000000000000000000000123 /* CodexLoginStatus.swift */; };
+		000000000000000000000030 /* QuotaAccountsTransfer.swift in Sources */ = {isa = PBXBuildFile; fileRef = 000000000000000000000124 /* QuotaAccountsTransfer.swift */; };
+		000000000000000000000032 /* QuotaWidgetCommands.swift in Sources */ = {isa = PBXBuildFile; fileRef = 000000000000000000000125 /* QuotaWidgetCommands.swift */; };
+		000000000000000000000033 /* QuotaWidgetCommands.swift in Sources */ = {isa = PBXBuildFile; fileRef = 000000000000000000000125 /* QuotaWidgetCommands.swift */; };
+		000000000000000000000034 /* QuotaRefreshService.swift in Sources */ = {isa = PBXBuildFile; fileRef = 000000000000000000000126 /* QuotaRefreshService.swift */; };
+		000000000000000000000036 /* CodexUsageClient.swift in Sources */ = {isa = PBXBuildFile; fileRef = 000000000000000000000127 /* CodexUsageClient.swift */; };
+		000000000000000000000038 /* BrimSettingsView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 000000000000000000000128 /* BrimSettingsView.swift */; };
+		000000000000000000000039 /* QuotaUsageSnapshot.swift in Sources */ = {isa = PBXBuildFile; fileRef = 000000000000000000000129 /* QuotaUsageSnapshot.swift */; };
+		00000000000000000000003A /* BrimSettingsComponents.swift in Sources */ = {isa = PBXBuildFile; fileRef = 00000000000000000000012A /* BrimSettingsComponents.swift */; };
+		00000000000000000000003B /* PersonalizationSettingsView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 00000000000000000000012B /* PersonalizationSettingsView.swift */; };
+		00000000000000000000003C /* TransferSettingsView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 00000000000000000000012C /* TransferSettingsView.swift */; };
+		00000000000000000000003D /* AboutPrivacySettingsView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 00000000000000000000012D /* AboutPrivacySettingsView.swift */; };
 /* End PBXBuildFile section */
 
 /* Begin PBXContainerItemProxy section */
@@ -120,6 +131,17 @@
 		000000000000000000000120 /* QuotaRefreshServiceTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = QuotaRefreshServiceTests.swift; sourceTree = "<group>"; };
 		000000000000000000000121 /* FirstRunOnboardingView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = FirstRunOnboardingView.swift; sourceTree = "<group>"; };
 		000000000000000000000122 /* AddAccountSheet.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AddAccountSheet.swift; sourceTree = "<group>"; };
+		000000000000000000000123 /* CodexLoginStatus.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CodexLoginStatus.swift; sourceTree = "<group>"; };
+		000000000000000000000124 /* QuotaAccountsTransfer.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = QuotaAccountsTransfer.swift; sourceTree = "<group>"; };
+		000000000000000000000125 /* QuotaWidgetCommands.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = QuotaWidgetCommands.swift; sourceTree = "<group>"; };
+		000000000000000000000126 /* QuotaRefreshService.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = QuotaRefreshService.swift; sourceTree = "<group>"; };
+		000000000000000000000127 /* CodexUsageClient.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CodexUsageClient.swift; sourceTree = "<group>"; };
+		000000000000000000000128 /* BrimSettingsView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = BrimSettingsView.swift; sourceTree = "<group>"; };
+		000000000000000000000129 /* QuotaUsageSnapshot.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = QuotaUsageSnapshot.swift; sourceTree = "<group>"; };
+		00000000000000000000012A /* BrimSettingsComponents.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = BrimSettingsComponents.swift; sourceTree = "<group>"; };
+		00000000000000000000012B /* PersonalizationSettingsView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PersonalizationSettingsView.swift; sourceTree = "<group>"; };
+		00000000000000000000012C /* TransferSettingsView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TransferSettingsView.swift; sourceTree = "<group>"; };
+		00000000000000000000012D /* AboutPrivacySettingsView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AboutPrivacySettingsView.swift; sourceTree = "<group>"; };
 		000000000000000000000200 /* Brim.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = Brim.app; sourceTree = BUILT_PRODUCTS_DIR; };
 		000000000000000000000201 /* BrimWidget.appex */ = {isa = PBXFileReference; explicitFileType = "wrapper.app-extension"; includeInIndex = 0; path = BrimWidget.appex; sourceTree = BUILT_PRODUCTS_DIR; };
 		000000000000000000000202 /* BrimTests.xctest */ = {isa = PBXFileReference; explicitFileType = wrapper.cfbundle; includeInIndex = 0; path = BrimTests.xctest; sourceTree = BUILT_PRODUCTS_DIR; };
@@ -184,6 +206,11 @@
 			children = (
 				000000000000000000000101 /* BrimApp.swift */,
 				000000000000000000000102 /* AccountSettingsView.swift */,
+				000000000000000000000128 /* BrimSettingsView.swift */,
+				00000000000000000000012A /* BrimSettingsComponents.swift */,
+				00000000000000000000012B /* PersonalizationSettingsView.swift */,
+				00000000000000000000012C /* TransferSettingsView.swift */,
+				00000000000000000000012D /* AboutPrivacySettingsView.swift */,
 				000000000000000000000121 /* FirstRunOnboardingView.swift */,
 				000000000000000000000122 /* AddAccountSheet.swift */,
 				000000000000000000000118 /* AccountSidebar.swift */,
@@ -221,6 +248,12 @@
 				000000000000000000000110 /* QuotaState.swift */,
 				000000000000000000000111 /* QuotaRepository.swift */,
 				000000000000000000000104 /* QuotaStore.swift */,
+				000000000000000000000124 /* QuotaAccountsTransfer.swift */,
+				000000000000000000000125 /* QuotaWidgetCommands.swift */,
+				000000000000000000000126 /* QuotaRefreshService.swift */,
+				000000000000000000000123 /* CodexLoginStatus.swift */,
+				000000000000000000000127 /* CodexUsageClient.swift */,
+				000000000000000000000129 /* QuotaUsageSnapshot.swift */,
 				000000000000000000000112 /* AppRoute.swift */,
 				000000000000000000000105 /* QuotaRingView.swift */,
 				000000000000000000000113 /* QuotaWidgetLayout.swift */,
@@ -364,6 +397,11 @@
 			files = (
 				000000000000000000000001 /* BrimApp.swift in Sources */,
 				000000000000000000000002 /* AccountSettingsView.swift in Sources */,
+				000000000000000000000038 /* BrimSettingsView.swift in Sources */,
+				00000000000000000000003A /* BrimSettingsComponents.swift in Sources */,
+				00000000000000000000003B /* PersonalizationSettingsView.swift in Sources */,
+				00000000000000000000003C /* TransferSettingsView.swift in Sources */,
+				00000000000000000000003D /* AboutPrivacySettingsView.swift in Sources */,
 				00000000000000000000002C /* FirstRunOnboardingView.swift in Sources */,
 				00000000000000000000002D /* AddAccountSheet.swift in Sources */,
 				000000000000000000000023 /* AccountSidebar.swift in Sources */,
@@ -380,6 +418,12 @@
 				000000000000000000000013 /* QuotaState.swift in Sources */,
 				000000000000000000000015 /* QuotaRepository.swift in Sources */,
 				000000000000000000000004 /* QuotaStore.swift in Sources */,
+				000000000000000000000030 /* QuotaAccountsTransfer.swift in Sources */,
+				000000000000000000000032 /* QuotaWidgetCommands.swift in Sources */,
+				000000000000000000000034 /* QuotaRefreshService.swift in Sources */,
+				00000000000000000000002E /* CodexLoginStatus.swift in Sources */,
+				000000000000000000000036 /* CodexUsageClient.swift in Sources */,
+				000000000000000000000039 /* QuotaUsageSnapshot.swift in Sources */,
 				000000000000000000000017 /* AppRoute.swift in Sources */,
 				000000000000000000000005 /* QuotaRingView.swift in Sources */,
 				000000000000000000000019 /* QuotaWidgetLayout.swift in Sources */,
@@ -401,7 +445,7 @@
 				000000000000000000000012 /* QuotaColor.swift in Sources */,
 				000000000000000000000014 /* QuotaState.swift in Sources */,
 				000000000000000000000016 /* QuotaRepository.swift in Sources */,
-				000000000000000000000009 /* QuotaStore.swift in Sources */,
+				000000000000000000000033 /* QuotaWidgetCommands.swift in Sources */,
 				000000000000000000000018 /* AppRoute.swift in Sources */,
 				00000000000000000000000A /* QuotaRingView.swift in Sources */,
 				00000000000000000000001A /* QuotaWidgetLayout.swift in Sources */,

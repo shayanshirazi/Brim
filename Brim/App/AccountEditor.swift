@@ -9,7 +9,7 @@ struct AccountEditor: View {
 
     private var profilePath: Binding<String> {
         Binding(
-            get: { account.resolvedProviderProfilePath },
+            get: { account.providerProfilePathForThisDevice },
             set: { account.providerProfilePath = $0 }
         )
     }

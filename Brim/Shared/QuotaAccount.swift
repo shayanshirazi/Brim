@@ -387,7 +387,7 @@ public struct QuotaAccount: Codable, Hashable, Identifiable {
         Int(round(fraction * 100))
     }
 
-    public var resolvedProviderProfilePath: String {
+    public var providerProfilePathForThisDevice: String {
         providerProfilePath ?? QuotaAccountDefaults.defaultProfilePath(for: name, provider: provider)
     }
 
@@ -418,6 +418,10 @@ public struct QuotaAccount: Codable, Hashable, Identifiable {
         normalizedAccountEmail != nil
     }
 
+    // Widget snapshots leave the app sandbox, and exports may leave the device.
+    // Keep these boundary transforms close to the model so every caller scrubs
+    // provider identity, profile paths, credentials, and transient refresh text
+    // the same way.
     public func widgetSnapshotAccount() -> QuotaAccount {
         var account = clearingPrivateProviderFields(keepProfilePath: false)
         account.lastRefreshAttemptAt = nil

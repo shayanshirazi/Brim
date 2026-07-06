@@ -206,6 +206,43 @@ final class QuotaRefreshServiceTests: XCTestCase {
         XCTAssertNil(result.quota)
     }
 
+    func testCodexLoginTreatsNotLoggedInOutputAsDisconnected() async {
+        let account = testLoginAccount()
+        var didFetchUsage = false
+        let service = QuotaRefreshService(
+            commandRunner: { _, _ in
+                CommandResult(exitCode: 0, standardOutput: "Not logged in", standardError: "")
+            },
+            usageFetcher: { _ in
+                didFetchUsage = true
+                return .unavailable("Should not fetch usage for a disconnected session.", accountEmail: nil)
+            }
+        )
+
+        let result = await service.refresh(account)
+
+        XCTAssertEqual(result.status, .notConnected)
+        XCTAssertEqual(result.message, "Sign in with Codex to connect this account.")
+        XCTAssertNil(result.quota)
+        XCTAssertFalse(didFetchUsage)
+    }
+
+    func testCommandMessageKeepsStderrAfterFilteringIgnoredStdoutWarnings() {
+        let result = CommandResult(
+            exitCode: 1,
+            standardOutput: "WARNING: proceeding despite CODEX_HOME points at a missing path",
+            standardError: "Authentication token expired"
+        )
+
+        let message = CodexLoginStatusClassifier.commandMessage(
+            from: result,
+            fallbackMessage: "Brim could not check the Codex session.",
+            ignoredFragments: ["WARNING: proceeding", "CODEX_HOME points"]
+        )
+
+        XCTAssertEqual(message, "Authentication token expired")
+    }
+
     private func testLoginAccount() -> QuotaAccount {
         QuotaAccount(
             id: UUID(uuidString: "22222222-2222-2222-2222-222222222222")!,

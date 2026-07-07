@@ -371,7 +371,7 @@ struct ConnectionStatusPill: View {
     private var color: Color {
         switch account.signalState {
         case .ready:
-            return Color(hex: "#32D873")
+            return Color(hex: "#1FA85A")
         case .exhausted:
             return Color(hex: "#B7791F")
         case .waitingForQuotaSource:

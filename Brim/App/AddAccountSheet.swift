@@ -116,10 +116,10 @@ struct AddAccountSheet: View {
 
             LazyVGrid(
                 columns: [
-                    GridItem(.flexible(), spacing: 12),
-                    GridItem(.flexible(), spacing: 12)
+                    GridItem(.flexible(), spacing: 8),
+                    GridItem(.flexible(), spacing: 8)
                 ],
-                spacing: 12
+                spacing: 8
             ) {
                 ForEach(modes) { mode in
                     AddAccountOptionButton(
@@ -170,14 +170,22 @@ private struct AddAccountOptionButton: View {
 
     var body: some View {
         Button(action: action) {
-            VStack(spacing: 12) {
+            VStack(spacing: 10) {
                 ProviderModeMark(mode: mode)
 
-                Text(mode.title)
-                    .font(.system(size: 14, weight: .bold, design: .rounded))
+                VStack(spacing: 3) {
+                    Text(mode.title)
+                        .font(.system(size: 16, weight: .bold, design: .rounded))
+
+                    Text(mode.subtitle)
+                        .font(.system(size: 11, weight: .bold, design: .rounded))
+                        .foregroundStyle(accent)
+                        .lineLimit(1)
+                        .minimumScaleFactor(0.8)
+                }
             }
             .frame(maxWidth: .infinity)
-            .aspectRatio(1, contentMode: .fit)
+            .frame(height: 176)
             .background(
                 LinearGradient(
                     colors: [accent.opacity(0.10), Color.primary.opacity(0.03)],

@@ -114,7 +114,13 @@ struct AddAccountSheet: View {
                 .accessibilityLabel("Close")
             }
 
-            VStack(spacing: 12) {
+            LazyVGrid(
+                columns: [
+                    GridItem(.flexible(), spacing: 12),
+                    GridItem(.flexible(), spacing: 12)
+                ],
+                spacing: 12
+            ) {
                 ForEach(modes) { mode in
                     AddAccountOptionButton(
                         mode: mode,
@@ -124,7 +130,7 @@ struct AddAccountSheet: View {
             }
         }
         .padding(24)
-        .frame(width: 520)
+        .frame(width: 420)
         .background(Color(nsColor: .windowBackgroundColor))
     }
 }
@@ -164,31 +170,17 @@ private struct AddAccountOptionButton: View {
 
     var body: some View {
         Button(action: action) {
-            HStack(alignment: .top, spacing: 14) {
+            VStack(spacing: 12) {
                 ProviderModeMark(mode: mode)
 
-                VStack(alignment: .leading, spacing: 5) {
-                    Text(mode.title)
-                        .font(.system(size: 17, weight: .bold, design: .rounded))
-
-                    Text(mode.subtitle)
-                        .font(.system(size: 12, weight: .bold, design: .rounded))
-                        .foregroundStyle(accent)
-
-                    Text(mode.detail)
-                        .font(.system(size: 12, weight: .medium, design: .rounded))
-                        .foregroundStyle(.secondary)
-                        .fixedSize(horizontal: false, vertical: true)
-                }
-
-                Spacer(minLength: 0)
+                Text(mode.title)
+                    .font(.system(size: 14, weight: .bold, design: .rounded))
             }
-            .frame(maxWidth: .infinity, alignment: .topLeading)
-            .padding(16)
-            .frame(height: 104, alignment: .top)
+            .frame(maxWidth: .infinity)
+            .aspectRatio(1, contentMode: .fit)
             .background(
                 LinearGradient(
-                    colors: [accent.opacity(0.12), Color.primary.opacity(0.035)],
+                    colors: [accent.opacity(0.10), Color.primary.opacity(0.03)],
                     startPoint: .topLeading,
                     endPoint: .bottomTrailing
                 ),
@@ -196,10 +188,12 @@ private struct AddAccountOptionButton: View {
             )
             .overlay {
                 RoundedRectangle(cornerRadius: 14, style: .continuous)
-                    .stroke(accent.opacity(0.22), lineWidth: 1)
+                    .stroke(accent.opacity(0.20), lineWidth: 1)
             }
+            .contentShape(RoundedRectangle(cornerRadius: 14, style: .continuous))
         }
         .buttonStyle(.plain)
+        .help(mode.subtitle)
     }
 }
 

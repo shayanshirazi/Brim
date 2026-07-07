@@ -117,10 +117,16 @@ struct BrimWidgetView: View {
             surfaceStyle: .none,
             accountSlotDecorator: { account, slot in
                 AnyView(
-                    Button(intent: SelectQuotaAccountIntent(accountID: account.id.uuidString)) {
-                        slot
+                    Group {
+                        if let accountURL = URL(string: AppRoute.account(account.id).urlString) {
+                            Link(destination: accountURL) {
+                                slot
+                            }
+                            .buttonStyle(.plain)
+                        } else {
+                            slot
+                        }
                     }
-                    .buttonStyle(.plain)
                 )
             },
             pagerDecorator: { direction, chevron in

@@ -262,7 +262,8 @@ private struct AccountSidebarRow: View {
                         }
 
                         Text(account.usageSummaryText)
-                            .font(.system(size: 11, weight: .medium, design: .monospaced))
+                            .font(.system(size: 10.5, weight: .medium, design: .rounded))
+                            .monospacedDigit()
                             .foregroundStyle(.secondary)
                             .blur(radius: account.refreshStatus.hidesQuotaDetails ? 2.6 : 0)
                             .saturation(account.refreshStatus.hidesQuotaDetails ? 0.18 : 1)

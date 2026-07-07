@@ -79,11 +79,10 @@ public struct QuotaWidgetContent: View {
             }
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity)
-        .overlay(alignment: .topTrailing) {
+        .overlay(alignment: .bottom) {
             if !accounts.isEmpty {
                 controls()
-                    .padding(.top, family.controlButtonPadding)
-                    .padding(.trailing, family.controlButtonPadding)
+                    .padding(.bottom, 6)
             }
         }
     }

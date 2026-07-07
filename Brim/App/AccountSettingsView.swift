@@ -350,6 +350,13 @@ struct AccountSettingsView: View {
         case .accounts:
             selectedAccountID = store.selectedAccountID ?? store.accounts.first?.id
             showsSettings = false
+        case .account(let accountID):
+            let resolvedID = store.accounts.first(where: { $0.id == accountID })?.id
+            selectedAccountID = resolvedID ?? store.accounts.first?.id
+            if let resolvedID {
+                store.selectAccount(id: resolvedID)
+            }
+            showsSettings = false
         case nil:
             break
         }

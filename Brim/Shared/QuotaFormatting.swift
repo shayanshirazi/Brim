@@ -257,7 +257,7 @@ public extension QuotaAccount {
             return refreshStatus.title.lowercased()
         }
 
-        return hasUsageSnapshot ? "\(sessionPercentText) session · \(remainingPercentText) wk" : "unavailable"
+        return hasUsageSnapshot ? "\(sessionPercentText) · \(remainingPercentText)" : "unavailable"
     }
 
     var resetText: String {

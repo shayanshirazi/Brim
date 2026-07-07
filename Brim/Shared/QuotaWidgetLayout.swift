@@ -13,8 +13,8 @@ public enum WidgetFamilyShape {
 
     public var ringDiameter: CGFloat {
         switch self {
-        case .small: return 64
-        case .medium: return 64
+        case .small: return 58
+        case .medium: return 58
         }
     }
 
@@ -29,12 +29,12 @@ public enum WidgetFamilyShape {
 
     public var accountSlotWidth: CGFloat {
         switch self {
-        case .small: return 68
-        case .medium: return 68
+        case .small: return 62
+        case .medium: return 62
         }
     }
 
-    public var accountLabelSpacing: CGFloat { 4 }
+    public var accountLabelSpacing: CGFloat { 8 }
     public var weeklyLabelFontSize: CGFloat { 10 }
     public var weeklyLabelHeight: CGFloat { 12 }
     public var sessionLabelFontSize: CGFloat { 13 }
@@ -47,8 +47,8 @@ public enum WidgetFamilyShape {
 
     public var horizontalPadding: CGFloat {
         switch self {
-        case .small: return 15
-        case .medium: return 16
+        case .small: return 8
+        case .medium: return 10
         }
     }
 
@@ -68,7 +68,7 @@ public enum WidgetFamilyShape {
         }
     }
 
-    public var controlButtonPadding: CGFloat { 7 }
+    public var controlButtonPadding: CGFloat { 12 }
 
     public var controlSpacing: CGFloat {
         switch self {
@@ -79,8 +79,8 @@ public enum WidgetFamilyShape {
 
     public var pagerButtonSize: CGFloat {
         switch self {
-        case .small: return 16
-        case .medium: return 18
+        case .small: return 12
+        case .medium: return 12
         }
     }
 
@@ -93,8 +93,8 @@ public enum WidgetFamilyShape {
 
     public var pagerSpacing: CGFloat {
         switch self {
-        case .small: return 5
-        case .medium: return 7
+        case .small: return 4
+        case .medium: return 4
         }
     }
 

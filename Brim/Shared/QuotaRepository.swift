@@ -4,6 +4,10 @@ public enum BrimStorage {
     private static let previousProductKey = ["ha", "lo"].joined()
     public static let previousApplicationSupportDirectoryName = previousProductKey.capitalized
 
+    /// Shared container for app <-> widget state. Both targets are sandboxed with separate
+    /// containers, so this group is the only storage they can both reach.
+    public static let appGroupIdentifier = "7SBNT5ZG4M.dev.brim.app"
+
     public static func previousKey(_ suffix: String) -> String {
         "\(previousProductKey).\(suffix)"
     }
@@ -142,26 +146,39 @@ public struct QuotaRepository {
 public struct QuotaWidgetSnapshotStore {
     private let repository: QuotaRepository?
     private let fallbackURL: URL
-    private let previousFallbackURL: URL
+    private let legacyFallbackURLs: [URL]
 
     public init() {
         let applicationSupportURL = FileManager.default.urls(for: .applicationSupportDirectory, in: .userDomainMask)
             .first ?? FileManager.default.homeDirectoryForCurrentUser
-        fallbackURL = applicationSupportURL
+        let sandboxLocalURL = applicationSupportURL
             .appendingPathComponent("Brim", isDirectory: true)
             .appendingPathComponent("widget-snapshot.json")
-        previousFallbackURL = applicationSupportURL
+        let previousProductURL = applicationSupportURL
             .appendingPathComponent(BrimStorage.previousApplicationSupportDirectoryName, isDirectory: true)
             .appendingPathComponent("widget-snapshot.json")
+
+        if let groupURL = FileManager.default
+            .containerURL(forSecurityApplicationGroupIdentifier: BrimStorage.appGroupIdentifier)?
+            .appendingPathComponent("widget-snapshot.json") {
+            fallbackURL = groupURL
+            legacyFallbackURLs = [sandboxLocalURL, previousProductURL]
+        } else {
+            fallbackURL = sandboxLocalURL
+            legacyFallbackURLs = [previousProductURL]
+        }
+
         repository = nil
     }
 
     init(repository: QuotaRepository?, fallbackURL: URL, previousFallbackURL: URL? = nil) {
         self.repository = repository
         self.fallbackURL = fallbackURL
-        self.previousFallbackURL = previousFallbackURL ?? fallbackURL
-            .deletingLastPathComponent()
-            .appendingPathComponent("previous-widget-snapshot.json")
+        self.legacyFallbackURLs = [
+            previousFallbackURL ?? fallbackURL
+                .deletingLastPathComponent()
+                .appendingPathComponent("previous-widget-snapshot.json")
+        ]
     }
 
     public func load() -> QuotaLoadResult {
@@ -170,11 +187,10 @@ public struct QuotaWidgetSnapshotStore {
                 return fallbackResult
             }
 
+            // No shared snapshot yet (the app hasn't run). Show the real empty state
+            // instead of pretending example accounts exist.
             return QuotaLoadResult(
-                state: QuotaState(
-                    accounts: QuotaAccountDefaults.examples,
-                    selectedAccountID: QuotaAccountDefaults.examples.first?.id
-                ),
+                state: QuotaState(accounts: [], selectedAccountID: nil),
                 status: .unavailable
             )
         }
@@ -211,7 +227,13 @@ public struct QuotaWidgetSnapshotStore {
             return result
         }
 
-        return loadFallbackSnapshot(from: previousFallbackURL)
+        for legacyURL in legacyFallbackURLs {
+            if let result = loadFallbackSnapshot(from: legacyURL) {
+                return result
+            }
+        }
+
+        return nil
     }
 
     private func loadFallbackSnapshot(from url: URL) -> QuotaLoadResult? {
@@ -247,7 +269,20 @@ public struct QuotaWidgetSnapshotStore {
                 widgetPageIndex: state.widgetPageIndex
             )
             let data = try JSONEncoder().encode(payload)
+
+            // Skip the write (and downstream churn) when nothing changed.
+            if let existing = try? Data(contentsOf: fallbackURL), existing == data {
+                return .ready
+            }
+
             try data.write(to: fallbackURL, options: [.atomic])
+
+            // The group file is now authoritative; drop stale per-container copies
+            // so they can never shadow it through the legacy read fallback.
+            for legacyURL in legacyFallbackURLs where legacyURL != fallbackURL {
+                try? FileManager.default.removeItem(at: legacyURL)
+            }
+
             return .ready
         } catch {
             return .unavailable

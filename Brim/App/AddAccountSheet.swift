@@ -39,6 +39,39 @@ private extension QuotaProviderKind {
                     fallbackSystemImage: "terminal.fill"
                 )
             ]
+        case .chatgpt:
+            return [
+                AddAccountCreationMode(
+                    provider: self,
+                    connectionKind: .login,
+                    title: "ChatGPT",
+                    subtitle: "Use ChatGPT login",
+                    detail: "Track your ChatGPT plan's rate-limit windows.",
+                    fallbackSystemImage: "bubble.left.and.bubble.right.fill"
+                )
+            ]
+        case .claude:
+            return [
+                AddAccountCreationMode(
+                    provider: self,
+                    connectionKind: .apiToken,
+                    title: "Claude",
+                    subtitle: "Use an Anthropic API key",
+                    detail: "Track Anthropic API rate limits with an sk-ant-… key.",
+                    fallbackSystemImage: "sparkle"
+                )
+            ]
+        case .gemini:
+            return [
+                AddAccountCreationMode(
+                    provider: self,
+                    connectionKind: .apiToken,
+                    title: "Gemini",
+                    subtitle: "Use a Google AI API key",
+                    detail: "Track a Google AI key (AIza…). Google exposes no live usage yet.",
+                    fallbackSystemImage: "diamond.fill"
+                )
+            ]
         }
     }
 }
@@ -150,8 +183,9 @@ private struct AddAccountOptionButton: View {
 
                 Spacer(minLength: 0)
             }
-            .frame(maxWidth: .infinity, minHeight: 108, alignment: .topLeading)
+            .frame(maxWidth: .infinity, alignment: .topLeading)
             .padding(16)
+            .frame(height: 104, alignment: .top)
             .background(
                 LinearGradient(
                     colors: [accent.opacity(0.12), Color.primary.opacity(0.035)],

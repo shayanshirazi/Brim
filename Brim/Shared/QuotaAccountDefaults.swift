@@ -12,9 +12,9 @@ public enum QuotaAccountDefaults {
     public static let limitStepMinutes = 15
     public static let mediumWidgetSlotCount = 4
     public static let presetColorHexes = [
-        "#D7EA48", "#40E06B", "#65D6FF", "#4F8CFF",
-        "#8B6CFF", "#F45EE5", "#FF5A66", "#FFB33F",
-        "#8BD56B", "#37D6B8", "#7CA1FF"
+        "#22C55E", "#06B6D4", "#3B82F6", "#8B5CF6",
+        "#EC4899", "#EF4444", "#F59E0B", "#14B8A6",
+        "#6366F1", "#F97316", "#0EA5E9"
     ]
     public static let palette = presetColorHexes
 

@@ -2,10 +2,16 @@ import Foundation
 
 public enum QuotaProviderKind: String, Codable, Hashable, CaseIterable {
     case codex
+    case chatgpt
+    case claude
+    case gemini
 
     public var displayName: String {
         switch self {
         case .codex: return "Codex"
+        case .chatgpt: return "ChatGPT"
+        case .claude: return "Claude"
+        case .gemini: return "Gemini"
         }
     }
 
@@ -13,30 +19,57 @@ public enum QuotaProviderKind: String, Codable, Hashable, CaseIterable {
         switch self {
         case .codex:
             return URL(string: "https://chatgpt.com/codex/cloud/settings/analytics#usage")
+        case .chatgpt:
+            return URL(string: "https://chatgpt.com/#settings/Subscription")
+        case .claude:
+            return URL(string: "https://claude.ai/settings/usage")
+        case .gemini:
+            return URL(string: "https://aistudio.google.com/usage")
         }
     }
 
     public var logoAssetName: String? {
         switch self {
         case .codex: return "CodexLogo"
+        case .chatgpt: return "ChatGPTLogo"
+        case .claude: return "ClaudeLogo"
+        case .gemini: return "GeminiLogo"
         }
     }
 
     public var brandColorHex: String {
         switch self {
         case .codex: return "#6675FF"
+        case .chatgpt: return "#10A37F"
+        case .claude: return "#D97757"
+        case .gemini: return "#4285F4"
         }
     }
 
     public var loginTitle: String {
         switch self {
         case .codex: return "Codex sign-in"
+        case .chatgpt: return "ChatGPT sign-in"
+        case .claude: return "Claude sign-in"
+        case .gemini: return "Gemini sign-in"
         }
     }
 
     public var profileFolderName: String {
         switch self {
         case .codex: return ".codex-accounts"
+        case .chatgpt: return ".chatgpt-accounts"
+        case .claude: return ".claude-accounts"
+        case .gemini: return ".gemini-accounts"
+        }
+    }
+
+    /// Prefix an API key for this provider must carry.
+    public var apiKeyPrefix: String {
+        switch self {
+        case .codex, .chatgpt: return "sk-"
+        case .claude: return "sk-ant-"
+        case .gemini: return "AIza"
         }
     }
 }

@@ -14,14 +14,18 @@ struct UsagePanel: View {
             if account.hasUsageSnapshot {
                 VStack(spacing: 8) {
                     QuotaMetricRow(
-                        title: QuotaFormatting.usageLimitTitle(minutes: account.sessionWindowMinutes),
+                        title: account.connectionKind == .apiToken
+                            ? "Requests per minute"
+                            : QuotaFormatting.usageLimitTitle(minutes: account.sessionWindowMinutes),
                         resetLine: account.sessionResetLine(),
                         fraction: account.sessionRemainingFraction,
                         color: Color(hex: account.colorHex)
                     )
 
                     QuotaMetricRow(
-                        title: "Weekly usage limit",
+                        title: account.connectionKind == .apiToken
+                            ? "Tokens per minute"
+                            : "Weekly usage limit",
                         resetLine: account.weeklyResetLine(),
                         fraction: account.weeklyRemainingFraction,
                         color: Color(hex: account.colorHex)
@@ -32,7 +36,7 @@ struct UsagePanel: View {
                 .opacity(isQuotaRedacted ? 0.58 : 1)
                 .animation(.snappy(duration: 0.18), value: isQuotaRedacted)
             } else {
-                UsageUnavailableState(providerName: account.provider.displayName)
+                UsageUnavailableState(providerName: account.provider.displayName, detail: account.refreshMessage)
                     .frame(maxWidth: .infinity, minHeight: 154, alignment: .center)
             }
 
@@ -92,6 +96,7 @@ private struct UsageDashboardLink: View {
 
 private struct UsageUnavailableState: View {
     var providerName: String
+    var detail: String?
 
     var body: some View {
         VStack(spacing: 10) {
@@ -113,7 +118,7 @@ private struct UsageUnavailableState: View {
                 Text("Usage not available")
                     .font(.system(size: 14, weight: .bold, design: .rounded))
 
-                Text("\(providerName) is connected, but Brim has not received live rate-limit data yet.")
+                Text(detail ?? "\(providerName) is connected, but Brim has not received live rate-limit data yet.")
                     .font(.system(size: 12, weight: .medium, design: .rounded))
                     .foregroundStyle(.secondary)
                     .multilineTextAlignment(.center)
@@ -172,7 +177,7 @@ private struct RingColorControl: View {
             showsPalette.toggle()
         } label: {
             HStack(spacing: 10) {
-                Text("Ring colour")
+                Text("Ring color")
                     .font(.system(size: 12, weight: .medium, design: .rounded))
                     .foregroundStyle(.primary)
 
@@ -222,7 +227,7 @@ private struct RingColorPalette: View {
 
     var body: some View {
         VStack(alignment: .leading, spacing: 12) {
-            Text("Ring colour")
+            Text("Ring color")
                 .font(.system(size: 12, weight: .bold, design: .rounded))
                 .foregroundStyle(.secondary)
 
@@ -264,7 +269,7 @@ private struct RingColorPalette: View {
                     )
                 }
                 .buttonStyle(.plain)
-                .help("Choose custom colour")
+                .help("Choose custom color")
             }
         }
         .padding(14)

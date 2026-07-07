@@ -5,8 +5,6 @@ public typealias QuotaAccountSlotDecorator = (QuotaAccount, QuotaAccountSlotView
 public typealias QuotaPagerDecorator = (PagerDirection, PagerChevron) -> AnyView
 
 public struct QuotaWidgetContent: View {
-    @Environment(\.widgetRenderingMode) private var widgetRenderingMode
-
     public var accounts: [QuotaAccount]
     public var family: WidgetFamilyShape
     public var selectedAccountID: QuotaAccount.ID?
@@ -44,7 +42,7 @@ public struct QuotaWidgetContent: View {
         let visibleAccounts = page.visibleAccounts(paddedTo: family.slotCount)
         let showsPager = accounts.count > family.slotCount
 
-        ZStack(alignment: .bottomTrailing) {
+        ZStack {
             if surfaceStyle == .editorPreview {
                 BrimBackground(cornerRadius: family.cornerRadius)
             }
@@ -53,7 +51,10 @@ public struct QuotaWidgetContent: View {
                 QuotaWidgetEmptyState(family: family)
             } else {
                 HStack(spacing: family.pagerSpacing) {
+                    // Chevrons align with the ring centers, not the full slot
+                    // (ring + labels), so they sit at ring height.
                     renderedPager(.left, showsPager: showsPager)
+                        .offset(y: -family.pagerRingCenteringOffset)
 
                     HStack(spacing: family.accountSpacing) {
                         ForEach(Array(visibleAccounts.enumerated()), id: \.offset) { _, account in
@@ -72,15 +73,16 @@ public struct QuotaWidgetContent: View {
                     }
 
                     renderedPager(.right, showsPager: showsPager)
+                        .offset(y: -family.pagerRingCenteringOffset)
                 }
                 .padding(.horizontal, family.horizontalPadding)
-                .padding(.top, family.verticalPadding)
-                .padding(.bottom, family.accountRowBottomPadding)
             }
-
+        }
+        .frame(maxWidth: .infinity, maxHeight: .infinity)
+        .overlay(alignment: .topTrailing) {
             if !accounts.isEmpty {
                 controls()
-                    .padding(.bottom, family.controlButtonPadding)
+                    .padding(.top, family.controlButtonPadding)
                     .padding(.trailing, family.controlButtonPadding)
             }
         }
@@ -99,16 +101,10 @@ public struct QuotaWidgetContent: View {
 }
 
 private struct QuotaWidgetEmptyState: View {
-    @Environment(\.widgetRenderingMode) private var widgetRenderingMode
-
     var family: WidgetFamilyShape
 
-    private var isVibrant: Bool {
-        widgetRenderingMode == .vibrant
-    }
-
     private var foreground: Color {
-        isVibrant ? Color(hex: "#24586E") : Color(hex: "#173B46")
+        .primary
     }
 
     var body: some View {

@@ -54,6 +54,7 @@ struct ProviderProfilePanel: View {
             if selectedConnectionKind == .apiToken {
                 APITokenConnectionCard(
                     token: $apiToken,
+                    provider: account.provider,
                     savedTokenPreview: savedAPITokenPreview,
                     validationMessage: apiTokenValidationMessage,
                     statusMessage: apiTokenStatusMessage,
@@ -80,8 +81,8 @@ struct ProviderProfilePanel: View {
 
             Spacer(minLength: 0)
         }
-        .padding(.bottom, 36)
-        .frame(maxHeight: .infinity, alignment: .topLeading)
+        .padding(.bottom, 24)
+        .frame(minHeight: 0, maxHeight: .infinity, alignment: .topLeading)
         .overlay(alignment: .bottom) {
             setupFooter
         }
@@ -134,14 +135,34 @@ struct ProviderProfilePanel: View {
     }
 
     private var profileLocationDisclosure: some View {
-        DisclosureGroup(isExpanded: $showsProfileLocation) {
-            TextField("Profile path", text: $profilePath)
-                .textFieldStyle(.plain)
-                .font(.system(size: 11, weight: .medium, design: .monospaced))
-                .padding(.horizontal, 11)
-                .frame(height: 34)
-                .background(Color(nsColor: .textBackgroundColor), in: RoundedRectangle(cornerRadius: 9, style: .continuous))
-                .padding(.top, 8)
+        // Reserve the expanded footprint so toggling never reflows the panel or
+        // footer. The sizing copy is a non-interactive placeholder so focus and
+        // accessibility never land on an invisible control.
+        ZStack(alignment: .top) {
+            profileLocationGroup(isExpanded: .constant(true), placeholder: true)
+                .hidden()
+                .accessibilityHidden(true)
+                .allowsHitTesting(false)
+
+            profileLocationGroup(isExpanded: $showsProfileLocation)
+        }
+    }
+
+    private func profileLocationGroup(isExpanded: Binding<Bool>, placeholder: Bool = false) -> some View {
+        DisclosureGroup(isExpanded: isExpanded) {
+            Group {
+                if placeholder {
+                    Color.clear
+                } else {
+                    TextField("Profile path", text: $profilePath)
+                        .textFieldStyle(.plain)
+                        .font(.system(size: 11, weight: .medium, design: .monospaced))
+                        .padding(.horizontal, 11)
+                        .background(Color(nsColor: .textBackgroundColor), in: RoundedRectangle(cornerRadius: 9, style: .continuous))
+                }
+            }
+            .frame(height: 34)
+            .padding(.top, 8)
         } label: {
             Text("Profile location")
                 .font(.system(size: 11, weight: .bold, design: .rounded))
@@ -176,7 +197,7 @@ struct ProviderProfilePanel: View {
     }
 
     private var apiTokenValidation: APITokenValidation {
-        APITokenValidator.validate(trimmedAPIToken)
+        APITokenValidator.validate(trimmedAPIToken, provider: account.provider)
     }
 
     private var apiTokenValidationMessage: String? {
@@ -339,7 +360,7 @@ struct ProviderProfilePanel: View {
         }
 
         let token = trimmedAPIToken
-        guard case .valid = APITokenValidator.validate(token) else {
+        guard case .valid = APITokenValidator.validate(token, provider: account.provider) else {
             return
         }
 
@@ -352,7 +373,7 @@ struct ProviderProfilePanel: View {
 
         Task { @MainActor in
             do {
-                try await APITokenValidationClient().validate(token)
+                try await APITokenValidationClient().validate(token, provider: account.provider)
                 let credentialID = try CredentialStore.shared.saveAPIToken(token, accountID: account.id)
 
                 account.connectionKind = .apiToken
@@ -592,7 +613,7 @@ private enum APITokenValidation: Equatable {
 }
 
 private enum APITokenValidator {
-    static func validate(_ token: String) -> APITokenValidation {
+    static func validate(_ token: String, provider: QuotaProviderKind = .codex) -> APITokenValidation {
         guard !token.isEmpty else {
             return .empty
         }
@@ -603,8 +624,8 @@ private enum APITokenValidator {
             return .invalid("Paste the token without spaces or line breaks.")
         }
 
-        guard token.hasPrefix("sk-") else {
-            return .invalid("OpenAI API keys begin with sk-.")
+        guard token.hasPrefix(provider.apiKeyPrefix) else {
+            return .invalid("\(provider.displayName) API keys begin with \(provider.apiKeyPrefix).")
         }
 
         guard token.count >= 24 else {
@@ -639,20 +660,26 @@ private enum APITokenValidationError: Error {
 
 private struct APITokenValidationClient {
     private let session: URLSession
-    private let validationURL: URL
 
-    init(
-        session: URLSession = .shared,
-        validationURL: URL = URL(string: "https://api.openai.com/v1/models")!
-    ) {
+    init(session: URLSession = .shared) {
         self.session = session
-        self.validationURL = validationURL
     }
 
-    func validate(_ token: String) async throws {
-        var request = URLRequest(url: validationURL)
+    func validate(_ token: String, provider: QuotaProviderKind) async throws {
+        var request: URLRequest
+        switch provider {
+        case .claude:
+            request = URLRequest(url: URL(string: "https://api.anthropic.com/v1/models")!)
+            request.setValue(token, forHTTPHeaderField: "x-api-key")
+            request.setValue("2023-06-01", forHTTPHeaderField: "anthropic-version")
+        case .codex, .chatgpt:
+            request = URLRequest(url: URL(string: "https://api.openai.com/v1/models")!)
+            request.setValue("Bearer \(token)", forHTTPHeaderField: "Authorization")
+        case .gemini:
+            request = URLRequest(url: URL(string: "https://generativelanguage.googleapis.com/v1beta/models")!)
+            request.setValue(token, forHTTPHeaderField: "x-goog-api-key")
+        }
         request.httpMethod = "GET"
-        request.setValue("Bearer \(token)", forHTTPHeaderField: "Authorization")
         request.setValue("application/json", forHTTPHeaderField: "Accept")
 
         do {
@@ -690,6 +717,7 @@ private enum APITokenPreview {
 
 private struct APITokenConnectionCard: View {
     @Binding var token: String
+    var provider: QuotaProviderKind = .codex
     var savedTokenPreview: String?
     var validationMessage: String?
     var statusMessage: String
@@ -706,7 +734,7 @@ private struct APITokenConnectionCard: View {
     }
 
     private var saveValidation: APITokenValidation {
-        APITokenValidator.validate(token.trimmingCharacters(in: .whitespacesAndNewlines))
+        APITokenValidator.validate(token.trimmingCharacters(in: .whitespacesAndNewlines), provider: provider)
     }
 
     private var canSave: Bool {
@@ -750,11 +778,19 @@ private struct APITokenConnectionCard: View {
                 VStack(alignment: .leading, spacing: 6) {
                     SecureField("API token", text: $token)
                         .textFieldStyle(.plain)
+                        .lineLimit(1)
                         .font(.system(size: 12, weight: .medium, design: .rounded))
                         .padding(.horizontal, 12)
                         .frame(maxWidth: .infinity)
                         .frame(height: 38)
                         .background(Color(nsColor: .textBackgroundColor), in: RoundedRectangle(cornerRadius: 10, style: .continuous))
+                        .onChange(of: token) { _, newValue in
+                            // Pasted keys often carry newlines/spaces; collapse to one line.
+                            let sanitized = newValue.components(separatedBy: .whitespacesAndNewlines).joined()
+                            if sanitized != newValue {
+                                token = sanitized
+                            }
+                        }
 
                     if let validationMessage {
                         Text(validationMessage)

@@ -86,7 +86,8 @@ private struct BrimAppRootView: View {
 
     init() {
         let refreshService = QuotaRefreshService(
-            apiTokenIsAvailable: { CredentialStore.shared.hasAPIToken(credentialID: $0) }
+            apiTokenIsAvailable: { CredentialStore.shared.hasAPIToken(credentialID: $0) },
+            apiTokenProvider: { CredentialStore.shared.apiToken(credentialID: $0) }
         )
         _store = State(initialValue: QuotaStore(repository: QuotaRepository(), refreshService: refreshService))
     }

@@ -92,10 +92,6 @@ public enum QuotaFormatting {
         return "\(sessionWindowLabel(for: account)) \(minutes(account.sessionRemainingMinutes)) left / weekly \(minutes(account.weeklyRemainingMinutes)) left"
     }
 
-    public static func windowLine(for account: QuotaAccount) -> String {
-        "\(windowDuration(account.sessionWindowMinutes)) / \(windowDuration(account.weeklyWindowMinutes)) windows"
-    }
-
     public static func resetText(for account: QuotaAccount) -> String {
         let weekdays = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"]
         let weekday = weekdays[max(0, min(6, account.resetWeekday - 1))]
@@ -242,7 +238,7 @@ public enum QuotaFormatting {
 public extension QuotaAccount {
     var remainingPercentText: String {
         guard hasUsageSnapshot, !refreshStatus.hidesQuotaDetails else {
-            return "-"
+            return "?"
         }
 
         return QuotaFormatting.percentText(weeklyRemainingFraction)
@@ -250,7 +246,7 @@ public extension QuotaAccount {
 
     var sessionPercentText: String {
         guard hasUsageSnapshot, !refreshStatus.hidesQuotaDetails else {
-            return "-"
+            return "?"
         }
 
         return QuotaFormatting.percentText(sessionRemainingFraction)
@@ -261,11 +257,7 @@ public extension QuotaAccount {
             return refreshStatus.title.lowercased()
         }
 
-        if hasExhaustedQuota {
-            return "exhausted"
-        }
-
-        return hasUsageSnapshot ? "\(remainingPercentText) remaining" : "usage unavailable"
+        return hasUsageSnapshot ? "\(sessionPercentText) session · \(remainingPercentText) wk" : "unavailable"
     }
 
     var resetText: String {

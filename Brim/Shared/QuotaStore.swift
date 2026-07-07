@@ -9,6 +9,7 @@ public final class QuotaStore: ObservableObject {
 
     @Published public private(set) var state: QuotaState
     @Published public private(set) var storageStatus: QuotaStorageStatus
+    private var activeRefresh: Task<Void, Never>?
 
     public var accounts: [QuotaAccount] {
         state.accounts
@@ -28,7 +29,9 @@ public final class QuotaStore: ObservableObject {
         state = result.state
         storageStatus = result.status
 
-        if result.status == .firstRun {
+        // Publish the widget snapshot on every launch so the shared container is
+        // populated even when no mutation happens this session.
+        if result.status == .ready || result.status == .firstRun {
             persist()
         }
     }
@@ -44,6 +47,10 @@ public final class QuotaStore: ObservableObject {
         let result = repository.load()
         state = result.state
         storageStatus = result.status
+
+        if result.status == .ready || result.status == .firstRun {
+            persist()
+        }
     }
 
     public func addAccount(
@@ -120,6 +127,27 @@ public final class QuotaStore: ObservableObject {
 
     @MainActor
     private func refresh(accounts accountsToRefresh: [QuotaAccount]) async {
+        // Concurrent refreshes race the OAuth refresh-token rotation and can save
+        // a revoked token, killing the session. Serialize: chain onto any run in
+        // flight rather than dropping the request. Only IDs are captured — the
+        // accounts are re-read when the run starts so a queued refresh cannot
+        // replay stale snapshots over newer edits.
+        let accountIDs = accountsToRefresh.map(\.id)
+        let previous = activeRefresh
+        let task = Task { @MainActor in
+            await previous?.value
+            await performRefresh(accountIDs: accountIDs)
+        }
+        activeRefresh = task
+        await task.value
+        if activeRefresh == task {
+            activeRefresh = nil
+        }
+    }
+
+    @MainActor
+    private func performRefresh(accountIDs: [QuotaAccount.ID]) async {
+        let accountsToRefresh = accounts.filter { accountIDs.contains($0.id) && $0.connectionKind != .manual }
         let now = Date()
 
         for var account in accountsToRefresh {
@@ -128,7 +156,7 @@ public final class QuotaStore: ObservableObject {
             account.refreshMessage = nil
             state.updateAccount(account)
         }
-        persist()
+        persist(reloadWidget: false)
 
         for var account in accountsToRefresh {
             let result = await refreshService.refresh(account)
@@ -143,7 +171,7 @@ public final class QuotaStore: ObservableObject {
                 account.providerAccountID = providerAccountID
             }
 
-            if result.status == .ready {
+            if result.status == .ready, !result.preservesExistingQuota {
                 account.lastSuccessfulRefreshAt = Date()
             }
 
@@ -160,7 +188,7 @@ public final class QuotaStore: ObservableObject {
                 account.resetHour = quota.resetHour ?? account.resetHour
                 account.resetMinute = quota.resetMinute ?? account.resetMinute
                 account.hasUsageSnapshot = true
-            } else if account.connectionKind != .manual {
+            } else if account.connectionKind != .manual, !result.preservesExistingQuota {
                 account.hasUsageSnapshot = false
                 account.weeklyUsedPercent = nil
                 account.sessionUsedPercent = nil
@@ -354,17 +382,39 @@ public enum QuotaWidgetCommands {
 }
 
 public struct QuotaRefreshService {
+    /// Minimum spacing between billable API-key probes; UI refreshes inside this
+    /// window reuse the existing snapshot.
+    public static let apiProbeMinimumInterval: TimeInterval = 25 * 60
+
     public var apiTokenIsAvailable: (String) -> Bool
+    public var apiTokenProvider: (String) -> String?
     public var usageFetcher: (QuotaAccount) async -> CodexUsageFetchOutcome
+    public var apiLimitsFetcher: (QuotaAccount, String) async -> APIRateLimitOutcome
 
     public init(
         apiTokenIsAvailable: @escaping (String) -> Bool = { _ in false },
+        apiTokenProvider: @escaping (String) -> String? = { _ in nil },
         usageFetcher: @escaping (QuotaAccount) async -> CodexUsageFetchOutcome = { account in
             await CodexUsageClient().fetchUsage(for: account)
+        },
+        apiLimitsFetcher: @escaping (QuotaAccount, String) async -> APIRateLimitOutcome = { account, apiKey in
+            switch account.provider {
+            case .claude:
+                return await AnthropicAPIRateLimitClient().fetchRateLimits(apiKey: apiKey)
+            case .codex, .chatgpt:
+                return await OpenAIAPIRateLimitClient().fetchRateLimits(
+                    apiKey: apiKey,
+                    includeEmail: account.normalizedAccountEmail == nil
+                )
+            case .gemini:
+                return await GeminiAPIKeyClient().checkKey(apiKey: apiKey)
+            }
         }
     ) {
         self.apiTokenIsAvailable = apiTokenIsAvailable
+        self.apiTokenProvider = apiTokenProvider
         self.usageFetcher = usageFetcher
+        self.apiLimitsFetcher = apiLimitsFetcher
     }
 
     public func refresh(_ account: QuotaAccount) async -> QuotaRefreshResult {
@@ -380,6 +430,51 @@ public struct QuotaRefreshService {
                 )
             }
 
+            if let apiKey = apiTokenProvider(credentialID) {
+                // Live probes can be billable (1-token completions); with fresh data
+                // in hand, skip the network and keep the current snapshot.
+                if account.hasUsageSnapshot,
+                   let lastSuccess = account.lastSuccessfulRefreshAt,
+                   Date().timeIntervalSince(lastSuccess) < Self.apiProbeMinimumInterval {
+                    return QuotaRefreshResult(
+                        status: .ready,
+                        message: account.refreshMessage,
+                        quota: nil,
+                        preservesExistingQuota: true
+                    )
+                }
+
+                let outcome = await apiLimitsFetcher(account, apiKey)
+                if outcome.unauthorized {
+                    return QuotaRefreshResult(
+                        status: .notConnected,
+                        message: outcome.failureMessage ?? "The saved API key was rejected. Save a new key.",
+                        quota: nil,
+                        providerAccountID: outcome.organizationID
+                    )
+                }
+
+                if let quota = outcome.quota {
+                    return QuotaRefreshResult(
+                        status: .ready,
+                        message: "Loaded \(account.provider.displayName) API rate limits (per-minute windows).",
+                        quota: quota,
+                        accountEmail: outcome.accountEmail,
+                        providerAccountID: outcome.organizationID
+                    )
+                }
+
+                let localQuota = readLocalQuotaSnapshot(for: account)
+                return QuotaRefreshResult(
+                    status: .ready,
+                    message: outcome.failureMessage ?? "\(account.provider.displayName) API rate limits are unavailable right now.",
+                    quota: localQuota,
+                    providerAccountID: outcome.organizationID,
+                    // A transient probe failure must not blank rings that were live.
+                    preservesExistingQuota: localQuota == nil
+                )
+            }
+
             let quota = readLocalQuotaSnapshot(for: account)
             return QuotaRefreshResult(
                 status: .ready,
@@ -390,8 +485,22 @@ public struct QuotaRefreshService {
             )
         case .login:
             switch account.provider {
-            case .codex:
+            case .codex, .chatgpt:
+                // ChatGPT shares the Codex OAuth backend; the usage endpoint reports
+                // the same ChatGPT-plan rate-limit windows.
                 return await refreshCodexLogin(account)
+            case .claude:
+                return QuotaRefreshResult(
+                    status: .notConnected,
+                    message: "Claude sign-in isn't supported yet. Connect with an Anthropic API key instead.",
+                    quota: nil
+                )
+            case .gemini:
+                return QuotaRefreshResult(
+                    status: .notConnected,
+                    message: "Gemini sign-in isn't supported. Connect with a Google AI API key instead.",
+                    quota: nil
+                )
             }
         }
     }
@@ -420,6 +529,16 @@ public struct QuotaRefreshService {
         }
 
         let usageOutcome = await usageFetcher(account)
+        if usageOutcome.isUnauthorized {
+            return QuotaRefreshResult(
+                status: .notConnected,
+                message: usageOutcome.message,
+                quota: nil,
+                accountEmail: usageOutcome.accountEmail,
+                providerAccountID: usageOutcome.accountID
+            )
+        }
+
         let usage = usageOutcome.result
         let quota = usage?.quota ?? readLocalQuotaSnapshot(for: account)
         return QuotaRefreshResult(
@@ -458,25 +577,464 @@ public struct QuotaRefreshService {
 
 }
 
+public struct APIRateLimitOutcome {
+    public var quota: QuotaUsageSnapshot?
+    public var organizationID: String?
+    public var accountEmail: String?
+    public var failureMessage: String?
+    public var unauthorized: Bool
+
+    public init(
+        quota: QuotaUsageSnapshot? = nil,
+        organizationID: String? = nil,
+        accountEmail: String? = nil,
+        failureMessage: String? = nil,
+        unauthorized: Bool = false
+    ) {
+        self.quota = quota
+        self.organizationID = organizationID
+        self.accountEmail = accountEmail
+        self.failureMessage = failureMessage
+        self.unauthorized = unauthorized
+    }
+}
+
+/// Reads live OpenAI API rate limits from the documented `x-ratelimit-*` response
+/// headers. API keys have per-minute request/token windows, not the ChatGPT plan's
+/// 5h/weekly Codex windows, and they expose no user email — only an organization ID.
+public struct OpenAIAPIRateLimitClient {
+    private let modelsURL: URL
+    private let completionsURL: URL
+    private let session: URLSession
+    private let now: () -> Date
+
+    public init(
+        modelsURL: URL = URL(string: "https://api.openai.com/v1/models")!,
+        completionsURL: URL = URL(string: "https://api.openai.com/v1/chat/completions")!,
+        session: URLSession = .shared,
+        now: @escaping () -> Date = Date.init
+    ) {
+        self.modelsURL = modelsURL
+        self.completionsURL = completionsURL
+        self.session = session
+        self.now = now
+    }
+
+    public func fetchRateLimits(apiKey: String, includeEmail: Bool = true) async -> APIRateLimitOutcome {
+        // 1) List the key's own models: validates auth and tells us which model the
+        //    probe may use (project keys often lack access to specific models).
+        var request = URLRequest(url: modelsURL)
+        request.setValue("Bearer \(apiKey)", forHTTPHeaderField: "Authorization")
+
+        var organizationID: String?
+        var availableModels: [String] = []
+        if let (data, response) = await httpResult(for: request) {
+            organizationID = response.value(forHTTPHeaderField: "openai-organization")
+
+            if response.statusCode == 401 || response.statusCode == 403 {
+                return APIRateLimitOutcome(
+                    organizationID: organizationID,
+                    failureMessage: "OpenAI rejected the API token (HTTP \(response.statusCode)).",
+                    unauthorized: true
+                )
+            }
+
+            if 200..<300 ~= response.statusCode, let quota = quotaSnapshot(from: response) {
+                return APIRateLimitOutcome(quota: quota, organizationID: organizationID)
+            }
+
+            availableModels = Self.modelIDs(from: data)
+        }
+
+        // 2) One-token completion on a model this key can actually use — the
+        //    documented carrier of the x-ratelimit headers (present even on 429).
+        let probeModel = Self.probeModel(from: availableModels)
+        var lastErrorMessage: String?
+        var lastErrorCode: String?
+        var lastStatus = 0
+
+        for tokenParameter in ["max_completion_tokens", "max_tokens"] {
+            var probe = URLRequest(url: completionsURL)
+            probe.httpMethod = "POST"
+            probe.setValue("Bearer \(apiKey)", forHTTPHeaderField: "Authorization")
+            probe.setValue("application/json", forHTTPHeaderField: "Content-Type")
+            probe.httpBody = try? JSONSerialization.data(withJSONObject: [
+                "model": probeModel,
+                "messages": [["role": "user", "content": "."]],
+                tokenParameter: 1
+            ])
+
+            guard let (data, response) = await httpResult(for: probe) else {
+                return APIRateLimitOutcome(
+                    organizationID: organizationID,
+                    failureMessage: "OpenAI API request failed. Check your connection."
+                )
+            }
+
+            organizationID = response.value(forHTTPHeaderField: "openai-organization") ?? organizationID
+
+            // Headers on other error statuses (400 model rejected, 404) describe
+            // the failed call, not usable capacity.
+            if response.statusCode < 300 || response.statusCode == 429, let quota = quotaSnapshot(from: response) {
+                var outcome = APIRateLimitOutcome(quota: quota, organizationID: organizationID)
+                if includeEmail {
+                    outcome.accountEmail = await fetchEmail(apiKey: apiKey)
+                }
+                return outcome
+            }
+
+            lastStatus = response.statusCode
+            lastErrorMessage = Self.errorField(from: data, key: "message")
+            lastErrorCode = Self.errorField(from: data, key: "code")
+
+            // Only retry with the legacy parameter when that's what was rejected.
+            guard lastErrorMessage?.contains(tokenParameter) == true else {
+                break
+            }
+        }
+
+        if lastErrorCode == "insufficient_quota" {
+            return APIRateLimitOutcome(
+                organizationID: organizationID,
+                failureMessage: "This OpenAI key has no billing credit left, so OpenAI reports no rate limits for it. Add credit at platform.openai.com, or use Login instead."
+            )
+        }
+
+        let detail = lastErrorMessage.map { " OpenAI said: \($0)" } ?? ""
+        return APIRateLimitOutcome(
+            organizationID: organizationID,
+            failureMessage: "No rate-limit data for this token (HTTP \(lastStatus), model \(probeModel)).\(detail)"
+        )
+    }
+
+    /// Best-effort identity lookup; API keys usually expose no email, but /v1/me
+    /// returns one for user-scoped keys.
+    private func fetchEmail(apiKey: String) async -> String? {
+        guard let url = URL(string: "https://api.openai.com/v1/me") else {
+            return nil
+        }
+
+        var request = URLRequest(url: url)
+        request.setValue("Bearer \(apiKey)", forHTTPHeaderField: "Authorization")
+
+        guard
+            let (data, response) = await httpResult(for: request),
+            200..<300 ~= response.statusCode,
+            let object = Self.jsonDictionary(from: data)
+        else {
+            return nil
+        }
+
+        return object["email"] as? String
+    }
+
+    private static func modelIDs(from data: Data) -> [String] {
+        guard let entries = jsonDictionary(from: data)?["data"] as? [[String: Any]] else {
+            return []
+        }
+
+        return entries.compactMap { $0["id"] as? String }
+    }
+
+    private static func probeModel(from availableModels: [String]) -> String {
+        let preferred = ["gpt-4o-mini", "gpt-4.1-nano", "gpt-4.1-mini", "gpt-5-nano", "gpt-5-mini", "gpt-4o", "gpt-4.1"]
+        for candidate in preferred where availableModels.contains(candidate) {
+            return candidate
+        }
+
+        // Any chat-family model the key can reach; avoid non-chat endpoints.
+        if let anyGPT = availableModels.first(where: { $0.hasPrefix("gpt-") && !$0.contains("instruct") }) {
+            return anyGPT
+        }
+
+        return "gpt-4o-mini"
+    }
+
+    private static func jsonDictionary(from data: Data) -> [String: Any]? {
+        try? JSONSerialization.jsonObject(with: data) as? [String: Any]
+    }
+
+    private static func errorField(from data: Data, key: String) -> String? {
+        guard let error = jsonDictionary(from: data)?["error"] as? [String: Any] else {
+            return nil
+        }
+
+        return error[key] as? String
+    }
+
+    private func httpResult(for request: URLRequest) async -> (Data, HTTPURLResponse)? {
+        guard
+            let (data, response) = try? await session.data(for: request),
+            let httpResponse = response as? HTTPURLResponse
+        else {
+            return nil
+        }
+
+        return (data, httpResponse)
+    }
+
+    private func quotaSnapshot(from response: HTTPURLResponse) -> QuotaUsageSnapshot? {
+        func headerDouble(_ name: String) -> Double? {
+            response.value(forHTTPHeaderField: name).flatMap(Double.init)
+        }
+
+        guard
+            let requestLimit = headerDouble("x-ratelimit-limit-requests"), requestLimit > 0,
+            let requestsRemaining = headerDouble("x-ratelimit-remaining-requests")
+        else {
+            return nil
+        }
+
+        let requestsUsedPercent = min(100, max(0, (1 - requestsRemaining / requestLimit) * 100))
+
+        var tokensUsedPercent: Double?
+        if
+            let tokenLimit = headerDouble("x-ratelimit-limit-tokens"), tokenLimit > 0,
+            let tokensRemaining = headerDouble("x-ratelimit-remaining-tokens") {
+            tokensUsedPercent = min(100, max(0, (1 - tokensRemaining / tokenLimit) * 100))
+        }
+
+        let reference = now()
+        let requestsReset = Self.resetInterval(response.value(forHTTPHeaderField: "x-ratelimit-reset-requests"))
+        let tokensReset = Self.resetInterval(response.value(forHTTPHeaderField: "x-ratelimit-reset-tokens"))
+
+        // Requests-per-minute maps to the session ring, tokens-per-minute to the
+        // weekly ring. Limit-minute fields stay nil so the account's stored plan
+        // limits are never clobbered by per-minute API windows.
+        return QuotaUsageSnapshot(
+            weeklyUsedPercent: tokensUsedPercent ?? requestsUsedPercent,
+            sessionUsedPercent: requestsUsedPercent,
+            sessionResetAt: requestsReset.map { reference.addingTimeInterval($0) },
+            weeklyResetAt: tokensReset.map { reference.addingTimeInterval($0) }
+        )
+    }
+
+    private static let resetRegex = try! NSRegularExpression(pattern: "([0-9]*\\.?[0-9]+)(ms|h|m|s)")
+
+    /// Parses OpenAI reset durations like "12ms", "7.66s", "1m30s", "1h2m3s".
+    static func resetInterval(_ raw: String?) -> TimeInterval? {
+        guard let raw = raw?.trimmingCharacters(in: .whitespaces).lowercased(), !raw.isEmpty else {
+            return nil
+        }
+
+        let matches = Self.resetRegex.matches(in: raw, range: NSRange(raw.startIndex..., in: raw))
+        guard !matches.isEmpty else {
+            return nil
+        }
+
+        var total: TimeInterval = 0
+        for match in matches {
+            guard
+                let valueRange = Range(match.range(at: 1), in: raw),
+                let unitRange = Range(match.range(at: 2), in: raw),
+                let value = Double(raw[valueRange])
+            else {
+                continue
+            }
+
+            switch raw[unitRange] {
+            case "ms": total += value / 1000
+            case "s": total += value
+            case "m": total += value * 60
+            case "h": total += value * 3600
+            default: break
+            }
+        }
+
+        return total
+    }
+}
+
+/// Reads live Anthropic API rate limits from the documented `anthropic-ratelimit-*`
+/// response headers (requests + input/output tokens per minute; RFC 3339 resets).
+/// Probes the free token-count endpoint first, then a 1-token Haiku message.
+public struct AnthropicAPIRateLimitClient {
+    private static let resetDateFormatter = ISO8601DateFormatter()
+
+    private let countTokensURL: URL
+    private let messagesURL: URL
+    private let session: URLSession
+    private let now: () -> Date
+
+    public init(
+        countTokensURL: URL = URL(string: "https://api.anthropic.com/v1/messages/count_tokens")!,
+        messagesURL: URL = URL(string: "https://api.anthropic.com/v1/messages")!,
+        session: URLSession = .shared,
+        now: @escaping () -> Date = Date.init
+    ) {
+        self.countTokensURL = countTokensURL
+        self.messagesURL = messagesURL
+        self.session = session
+        self.now = now
+    }
+
+    public func fetchRateLimits(apiKey: String) async -> APIRateLimitOutcome {
+        // Free probe first: count_tokens costs nothing.
+        if let response = await httpResponse(for: request(url: countTokensURL, apiKey: apiKey, maxTokens: nil)) {
+            if response.statusCode == 401 || response.statusCode == 403 {
+                return APIRateLimitOutcome(
+                    failureMessage: "Anthropic rejected the API key (HTTP \(response.statusCode)).",
+                    unauthorized: true
+                )
+            }
+
+            if 200..<300 ~= response.statusCode, let quota = quotaSnapshot(from: response) {
+                return APIRateLimitOutcome(quota: quota)
+            }
+        }
+
+        // Fall back to a 1-token message on the cheapest model; rate-limit
+        // headers are documented on Messages API responses (even 429s).
+        guard let response = await httpResponse(for: request(url: messagesURL, apiKey: apiKey, maxTokens: 1)) else {
+            return APIRateLimitOutcome(
+                failureMessage: "Anthropic API request failed. Check your connection."
+            )
+        }
+
+        guard
+            response.statusCode < 300 || response.statusCode == 429,
+            let quota = quotaSnapshot(from: response)
+        else {
+            return APIRateLimitOutcome(
+                failureMessage: "Anthropic did not report rate limits for this key (HTTP \(response.statusCode))."
+            )
+        }
+
+        return APIRateLimitOutcome(quota: quota)
+    }
+
+    private func request(url: URL, apiKey: String, maxTokens: Int?) -> URLRequest {
+        var request = URLRequest(url: url)
+        request.httpMethod = "POST"
+        request.setValue(apiKey, forHTTPHeaderField: "x-api-key")
+        request.setValue("2023-06-01", forHTTPHeaderField: "anthropic-version")
+        request.setValue("application/json", forHTTPHeaderField: "Content-Type")
+
+        var body: [String: Any] = [
+            "model": "claude-haiku-4-5",
+            "messages": [["role": "user", "content": "."]]
+        ]
+        if let maxTokens {
+            body["max_tokens"] = maxTokens
+        }
+        request.httpBody = try? JSONSerialization.data(withJSONObject: body)
+        return request
+    }
+
+    private func httpResponse(for request: URLRequest) async -> HTTPURLResponse? {
+        guard let (_, response) = try? await session.data(for: request) else {
+            return nil
+        }
+
+        return response as? HTTPURLResponse
+    }
+
+    private func quotaSnapshot(from response: HTTPURLResponse) -> QuotaUsageSnapshot? {
+        func headerDouble(_ name: String) -> Double? {
+            response.value(forHTTPHeaderField: name).flatMap(Double.init)
+        }
+        func headerDate(_ name: String) -> Date? {
+            response.value(forHTTPHeaderField: name).flatMap {
+                Self.resetDateFormatter.date(from: $0)
+            }
+        }
+
+        guard
+            let requestLimit = headerDouble("anthropic-ratelimit-requests-limit"), requestLimit > 0,
+            let requestsRemaining = headerDouble("anthropic-ratelimit-requests-remaining")
+        else {
+            return nil
+        }
+
+        let requestsUsedPercent = min(100, max(0, (1 - requestsRemaining / requestLimit) * 100))
+
+        // Prefer the input-token window for the second ring; fall back to the
+        // combined tokens window.
+        var tokensUsedPercent: Double?
+        var tokensReset: Date?
+        for prefix in ["anthropic-ratelimit-input-tokens", "anthropic-ratelimit-tokens"] {
+            if
+                let limit = headerDouble("\(prefix)-limit"), limit > 0,
+                let remaining = headerDouble("\(prefix)-remaining") {
+                tokensUsedPercent = min(100, max(0, (1 - remaining / limit) * 100))
+                tokensReset = headerDate("\(prefix)-reset")
+                break
+            }
+        }
+
+        return QuotaUsageSnapshot(
+            weeklyUsedPercent: tokensUsedPercent ?? requestsUsedPercent,
+            sessionUsedPercent: requestsUsedPercent,
+            sessionResetAt: headerDate("anthropic-ratelimit-requests-reset"),
+            weeklyResetAt: tokensReset
+        )
+    }
+}
+
+/// Gemini API keys can be verified, but Google exposes no usage or rate-limit
+/// data for them - the outcome carries a clear message instead of quota.
+public struct GeminiAPIKeyClient {
+    private let modelsURL: URL
+    private let session: URLSession
+
+    public init(
+        modelsURL: URL = URL(string: "https://generativelanguage.googleapis.com/v1beta/models")!,
+        session: URLSession = .shared
+    ) {
+        self.modelsURL = modelsURL
+        self.session = session
+    }
+
+    public func checkKey(apiKey: String) async -> APIRateLimitOutcome {
+        var request = URLRequest(url: modelsURL)
+        request.setValue(apiKey, forHTTPHeaderField: "x-goog-api-key")
+
+        guard
+            let (_, response) = try? await session.data(for: request),
+            let httpResponse = response as? HTTPURLResponse
+        else {
+            return APIRateLimitOutcome(
+                failureMessage: "Gemini API request failed. Check your connection."
+            )
+        }
+
+        guard 200..<300 ~= httpResponse.statusCode else {
+            return APIRateLimitOutcome(
+                failureMessage: "Google rejected the API key (HTTP \(httpResponse.statusCode)).",
+                unauthorized: httpResponse.statusCode == 401 || httpResponse.statusCode == 403
+            )
+        }
+
+        return APIRateLimitOutcome(
+            failureMessage: "Gemini key is valid. Google does not expose live rate-limit usage for API keys yet."
+        )
+    }
+}
+
 public struct QuotaRefreshResult {
     public var status: QuotaRefreshStatus
     public var message: String?
     public var quota: QuotaUsageSnapshot?
     public var accountEmail: String?
     public var providerAccountID: String?
+    /// When true and `quota` is nil, the account keeps its current snapshot
+    /// instead of clearing it (used when a probe is intentionally skipped).
+    public var preservesExistingQuota: Bool
 
     public init(
         status: QuotaRefreshStatus,
         message: String?,
         quota: QuotaUsageSnapshot?,
         accountEmail: String? = nil,
-        providerAccountID: String? = nil
+        providerAccountID: String? = nil,
+        preservesExistingQuota: Bool = false
     ) {
         self.status = status
         self.message = message
         self.quota = quota
         self.accountEmail = accountEmail
         self.providerAccountID = providerAccountID
+        self.preservesExistingQuota = preservesExistingQuota
     }
 }
 
@@ -534,7 +1092,15 @@ public struct CodexUsageFetchResult: Hashable {
 
 public enum CodexUsageFetchOutcome: Hashable {
     case success(CodexUsageFetchResult)
-    case unavailable(String, accountEmail: String?, accountID: String? = nil)
+    case unavailable(String, accountEmail: String?, accountID: String? = nil, unauthorized: Bool = false)
+
+    public var isUnauthorized: Bool {
+        if case .unavailable(_, _, _, let unauthorized) = self {
+            return unauthorized
+        }
+
+        return false
+    }
 
     public var result: CodexUsageFetchResult? {
         switch self {
@@ -549,7 +1115,7 @@ public enum CodexUsageFetchOutcome: Hashable {
         switch self {
         case .success(let result):
             return result.email
-        case .unavailable(_, let accountEmail, _):
+        case .unavailable(_, let accountEmail, _, _):
             return accountEmail
         }
     }
@@ -558,7 +1124,7 @@ public enum CodexUsageFetchOutcome: Hashable {
         switch self {
         case .success(let result):
             return result.accountID
-        case .unavailable(_, _, let accountID):
+        case .unavailable(_, _, let accountID, _):
             return accountID
         }
     }
@@ -567,7 +1133,7 @@ public enum CodexUsageFetchOutcome: Hashable {
         switch self {
         case .success:
             return "Loaded live Codex usage."
-        case .unavailable(let message, _, _):
+        case .unavailable(let message, _, _, _):
             return message
         }
     }
@@ -595,8 +1161,13 @@ private enum CodexUsageRequestOutcome {
         switch self {
         case .success(let result):
             return .success(result)
-        case .unavailable(let message, let accountEmail, let accountID, _):
-            return .unavailable(message, accountEmail: accountEmail, accountID: accountID)
+        case .unavailable(let message, let accountEmail, let accountID, let failureReason):
+            return .unavailable(
+                message,
+                accountEmail: accountEmail,
+                accountID: accountID,
+                unauthorized: failureReason == .unauthorized
+            )
         }
     }
 
@@ -644,9 +1215,17 @@ public struct CodexUsageClient {
         }
 
         let outcome = await fetchUsage(for: account, auth: auth, didRefreshToken: false)
-        if case .unauthorized = outcome.failureReason,
-           let refreshedAuth = await refreshAuthIfPossible(auth, profilePath: profilePath) {
-            return await fetchUsage(for: account, auth: refreshedAuth, didRefreshToken: true).publicOutcome
+        if case .unauthorized = outcome.failureReason {
+            if let refreshedAuth = await refreshAuthIfPossible(auth, profilePath: profilePath) {
+                return await fetchUsage(for: account, auth: refreshedAuth, didRefreshToken: true).publicOutcome
+            }
+
+            return CodexUsageRequestOutcome.failure(
+                "Codex session expired. Sign in with Codex again.",
+                accountEmail: nil,
+                accountID: auth?.accountID,
+                failureReason: .unauthorized
+            ).publicOutcome
         }
 
         return outcome.publicOutcome
@@ -758,7 +1337,10 @@ public struct CodexUsageClient {
             return nil
         }
 
-        let resetComponents = resetComponents(from: secondary.resetAt)
+        let reference = Date()
+        let sessionReset = primary.resetDate(from: reference)
+        let weeklyReset = secondary.resetDate(from: reference)
+        let resetComponents = resetComponents(from: weeklyReset)
 
         return QuotaUsageSnapshot(
             weeklyLimitMinutes: weeklyLimitMinutes,
@@ -767,20 +1349,19 @@ public struct CodexUsageClient {
             sessionUsedMinutes: primary.usedMinutes(limitMinutes: sessionLimitMinutes),
             weeklyUsedPercent: secondary.normalizedUsedPercent,
             sessionUsedPercent: primary.normalizedUsedPercent,
-            sessionResetAt: primary.resetDate,
-            weeklyResetAt: secondary.resetDate,
+            sessionResetAt: sessionReset,
+            weeklyResetAt: weeklyReset,
             resetWeekday: resetComponents.weekday,
             resetHour: resetComponents.hour,
             resetMinute: resetComponents.minute
         )
     }
 
-    private func resetComponents(from timestamp: TimeInterval?) -> DateComponents {
-        guard let timestamp else {
+    private func resetComponents(from date: Date?) -> DateComponents {
+        guard let date else {
             return DateComponents()
         }
 
-        let date = Date(timeIntervalSince1970: timestamp)
         return calendar.dateComponents([.weekday, .hour, .minute], from: date)
     }
 }
@@ -789,6 +1370,9 @@ enum CodexOAuthContract {
     static let clientID = "app_EMoamEEZ73f0CkXaXp7hrann"
     static let authBaseURL = URL(string: "https://auth.openai.com/oauth/authorize")!
     static let tokenURL = URL(string: "https://auth.openai.com/oauth/token")!
+    /// The only loopback port registered for this client's redirect URI; any other port is
+    /// rejected by the authorization server with `authorize_hydra_invalid_request`.
+    static let redirectPort: UInt16 = 1455
     static let scope = "openid profile email offline_access api.connectors.read api.connectors.invoke"
 
     static func authorizationURL(
@@ -1046,6 +1630,7 @@ private struct CodexRateLimitWindow: Decodable {
     var usedPercent: Double?
     var limitWindowSeconds: Double?
     var resetAt: TimeInterval?
+    var resetsInSeconds: Double?
 
     private enum CodingKeys: String, CodingKey {
         case usedPercent = "used_percent"
@@ -1053,10 +1638,11 @@ private struct CodexRateLimitWindow: Decodable {
         case resetAt = "reset_at"
     }
 
-    init(usedPercent: Double?, limitWindowSeconds: Double?, resetAt: TimeInterval?) {
+    init(usedPercent: Double?, limitWindowSeconds: Double?, resetAt: TimeInterval?, resetsInSeconds: Double? = nil) {
         self.usedPercent = usedPercent
         self.limitWindowSeconds = limitWindowSeconds
         self.resetAt = resetAt
+        self.resetsInSeconds = resetsInSeconds
     }
 
     init(from decoder: Decoder) throws {
@@ -1080,8 +1666,15 @@ private struct CodexRateLimitWindow: Decodable {
         usedPercent.map { max(0, min(100, $0)) }
     }
 
-    var resetDate: Date? {
-        resetAt.map { Date(timeIntervalSince1970: $0) }
+    /// Absolute reset time, anchored to the moment the response was fetched.
+    /// The API usually reports a relative `resets_in_seconds`; converting it once
+    /// here keeps the displayed time stable across refreshes.
+    func resetDate(from reference: Date) -> Date? {
+        if let resetAt {
+            return Date(timeIntervalSince1970: resetAt)
+        }
+
+        return resetsInSeconds.map { reference.addingTimeInterval($0) }
     }
 }
 
@@ -1101,6 +1694,12 @@ private struct CodexUsageWindow: Decodable {
         case limitSecondsCamel = "limitSeconds"
         case resetAt = "reset_at"
         case resetAtCamel = "resetAt"
+        case resetsAt = "resets_at"
+        case resetsAtCamel = "resetsAt"
+        case resetsInSeconds = "resets_in_seconds"
+        case resetsInSecondsCamel = "resetsInSeconds"
+        case resetInSeconds = "reset_in_seconds"
+        case resetInSecondsCamel = "resetInSeconds"
     }
 
     init(from decoder: Decoder) throws {
@@ -1119,13 +1718,18 @@ private struct CodexUsageWindow: Decodable {
         )
         let resetAt = try Self.decodeDouble(
             from: container,
-            keys: [.resetAt, .resetAtCamel]
+            keys: [.resetAt, .resetAtCamel, .resetsAt, .resetsAtCamel]
         ).map(Self.timestampSeconds)
+        let resetsInSeconds = try Self.decodeDouble(
+            from: container,
+            keys: [.resetsInSeconds, .resetsInSecondsCamel, .resetInSeconds, .resetInSecondsCamel]
+        )
 
         rateLimitWindow = CodexRateLimitWindow(
             usedPercent: decodedUsedPercent ?? decodedRemainingPercent.map { 100 - $0 },
             limitWindowSeconds: limitWindowSeconds,
-            resetAt: resetAt
+            resetAt: resetAt,
+            resetsInSeconds: resetsInSeconds
         )
     }
 

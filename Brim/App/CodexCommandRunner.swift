@@ -139,10 +139,18 @@ private final class OAuthCallbackServer: @unchecked Sendable {
     }
 
     func start() async throws -> UInt16 {
+        guard let port = NWEndpoint.Port(rawValue: CodexOAuthContract.redirectPort) else {
+            throw CodexOAuthError.localServerFailed
+        }
+
         let parameters = NWParameters.tcp
-        parameters.allowLocalEndpointReuse = true
-        parameters.requiredLocalEndpoint = .hostPort(host: .ipv4(.loopback), port: .any)
-        let listener = try NWListener(using: parameters, on: .any)
+        // No allowLocalEndpointReuse: with a fixed port, address reuse would let a
+        // second sign-in bind the same port and steal the browser callback instead
+        // of failing fast with the port-in-use message.
+        // The port must come from requiredLocalEndpoint alone; also passing it to
+        // NWListener(using:on:) makes the listener fail with EINVAL.
+        parameters.requiredLocalEndpoint = .hostPort(host: .ipv4(.loopback), port: port)
+        let listener = try NWListener(using: parameters)
         self.listener = listener
 
         listener.stateUpdateHandler = { [weak self] state in
@@ -218,13 +226,11 @@ private final class OAuthCallbackServer: @unchecked Sendable {
     private func handleListenerState(_ state: NWListener.State) {
         switch state {
         case .ready:
-            guard let port = listener?.port?.rawValue else {
-                resumeStart(throwing: CodexOAuthError.localServerFailed)
-                return
-            }
-            resumeStart(returning: port)
+            // With requiredLocalEndpoint, NWListener.port may not reflect the bound
+            // port; the fixed contract port is authoritative.
+            resumeStart(returning: listener?.port?.rawValue ?? CodexOAuthContract.redirectPort)
         case .failed(let error):
-            resumeStart(throwing: CodexOAuthError.serverMessage(error.localizedDescription))
+            resumeStart(throwing: Self.startFailure(for: error))
             completeCallback(.failure(CodexOAuthError.localServerFailed))
         case .cancelled:
             break
@@ -247,6 +253,16 @@ private final class OAuthCallbackServer: @unchecked Sendable {
             }
         }
         connection.start(queue: queue)
+    }
+
+    private static func startFailure(for error: NWError) -> CodexOAuthError {
+        if case .posix(.EADDRINUSE) = error {
+            return .serverMessage(
+                "Port \(CodexOAuthContract.redirectPort) is already in use. Close any other Codex sign-in (including `codex login` in a terminal) and try again."
+            )
+        }
+
+        return .serverMessage(error.localizedDescription)
     }
 
     private static func isLoopbackEndpoint(_ endpoint: NWEndpoint) -> Bool {

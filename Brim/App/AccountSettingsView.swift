@@ -93,6 +93,7 @@ struct AccountSettingsView: View {
     @State private var selectedAccountID: QuotaAccount.ID?
     @State private var showsAddAccountSheet = false
     @State private var showsSettings = false
+    @State private var isRefreshingAll = false
     @State private var selectedSettingsTab: BrimSettingsTab = .about
     @State private var resizeDragStartWidth: CGFloat?
     @State private var liveSidebarWidth = SplitLayoutMetrics.defaultSidebarWidth
@@ -167,7 +168,9 @@ struct AccountSettingsView: View {
                             renameAccount: renameAccount,
                             selectAccount: selectAccount,
                             isSettingsSelected: showsSettings,
-                            openSettings: openSettings
+                            openSettings: openSettings,
+                            refreshAllAccounts: refreshAllAccounts,
+                            isRefreshingAll: isRefreshingAll
                         )
                         .frame(width: sidebarWidth)
                         .transaction { transaction in
@@ -269,6 +272,18 @@ struct AccountSettingsView: View {
 
     private func addAccount() {
         showsAddAccountSheet = true
+    }
+
+    private func refreshAllAccounts() {
+        guard !isRefreshingAll else {
+            return
+        }
+
+        isRefreshingAll = true
+        Task { @MainActor in
+            await store.refreshConnectedAccounts()
+            isRefreshingAll = false
+        }
     }
 
     private func createAccount(mode: AddAccountCreationMode) {
@@ -998,15 +1013,22 @@ private struct PrivacySettingsTab: View {
         VStack(alignment: .leading, spacing: 16) {
             SettingsPanelHeader(
                 icon: "lock.shield",
-                title: "Privacy policy",
+                title: "Privacy & disclaimer",
                 subtitle: "Brim is designed to keep account details on your Mac."
             )
 
-            VStack(spacing: 10) {
-                PrivacyLine(icon: "key.horizontal", title: "Tokens stay in Keychain", detail: "API tokens are saved by macOS Keychain and are not written into widget snapshots or exports.")
-                PrivacyLine(icon: "square.stack.3d.up", title: "Widgets receive snapshots", detail: "The widget only gets account names, colors, quota numbers, and display state.")
-                PrivacyLine(icon: "arrow.up.doc", title: "Exports skip secrets", detail: "JSON exports move account names, colors, and modes. Emails, profile paths, tokens, and live usage are left on this Mac.")
-                PrivacyLine(icon: "chart.bar.xaxis", title: "No analytics", detail: "Brim does not include tracking, analytics, or remote reporting in this app.")
+            ScrollView {
+                VStack(spacing: 10) {
+                    PrivacyLine(icon: "key.horizontal", title: "Tokens stay in Keychain", detail: "API tokens and credentials are stored in the macOS Keychain on this Mac only. Brim does not transmit, copy, or upload them, and they are never written into widget snapshots or exports.")
+                    PrivacyLine(icon: "square.stack.3d.up", title: "Widgets receive snapshots", detail: "The widget receives only account names, colors, quota numbers, and display state. It never receives tokens, emails, account identifiers, or file paths.")
+                    PrivacyLine(icon: "arrow.up.doc", title: "Exports skip secrets", detail: "JSON exports contain account names, colors, and modes only. Emails, profile paths, tokens, and live usage never leave this Mac. You are responsible for any file you choose to export and share.")
+                    PrivacyLine(icon: "chart.bar.xaxis", title: "No analytics", detail: "Brim contains no tracking, analytics, telemetry, or remote reporting of any kind. The only network requests Brim makes are directly from your Mac to the provider APIs you connect (for example OpenAI or Anthropic), using your own credentials, solely to read usage and rate-limit data.")
+                    PrivacyLine(icon: "building.2", title: "Third-party services", detail: "Brim is an independent open-source project. It is not affiliated with, endorsed by, or sponsored by OpenAI, Anthropic, or any other provider. Product names and logos are trademarks of their respective owners and are used for identification only. Your use of connected services remains governed by each provider's own terms; you are responsible for ensuring your use complies with them.")
+                    PrivacyLine(icon: "exclamationmark.shield", title: "No warranty", detail: "Brim is provided \"as is\" and \"as available\", without warranty of any kind, express or implied, including merchantability, fitness for a particular purpose, accuracy, and non-infringement. Displayed quota and rate-limit figures are estimates derived from provider responses and may be incomplete, delayed, or wrong — do not rely on them for billing, compliance, or any decision with financial consequences.")
+                    PrivacyLine(icon: "scalemass", title: "Limitation of liability", detail: "To the maximum extent permitted by law, the authors and contributors of Brim shall not be liable for any direct, indirect, incidental, special, consequential, or exemplary damages — including lost profits, data loss, account suspension, or provider charges — arising from the use of, or inability to use, this software, even if advised of the possibility of such damages. Your sole and exclusive remedy is to stop using the software.")
+                    PrivacyLine(icon: "doc.text", title: "Open-source license", detail: "Brim's source code is distributed under its open-source license. That license, including its disclaimer of warranty and limitation of liability, governs your use of the software. By using Brim you accept those terms; if you do not accept them, do not use the software.")
+                }
+                .padding(.bottom, 4)
             }
 
             Spacer(minLength: 0)

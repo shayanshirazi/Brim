@@ -74,7 +74,6 @@ private struct HeaderPanel: View {
             QuotaRingView(
                 account: account,
                 diameter: 82,
-                lineWidth: 6,
                 showPercent: false,
                 surfaceStyle: .quiet
             )
@@ -114,21 +113,18 @@ private struct HeaderPanel: View {
                 nameEditor
 
                 if let accountEmail = account.normalizedAccountEmail {
-                    Text(accountEmail)
-                        .font(.system(size: 13, weight: .medium))
-                        .foregroundStyle(.secondary)
-                        .lineLimit(1)
-                        .truncationMode(.middle)
-                        .frame(maxWidth: 320, alignment: .leading)
+                    AccountEmailRow(account: account, email: accountEmail)
                 }
-
-                AccountIdentifierRow(account: account)
             }
             .frame(maxHeight: .infinity, alignment: .center)
 
             Spacer()
 
-            ConnectionStatusPill(account: account)
+            HStack(spacing: 14) {
+                ProviderLogoMark(provider: account.provider, size: 34)
+
+                ConnectionStatusPill(account: account)
+            }
         }
         .frame(minHeight: 104, alignment: .center)
         .padding(.horizontal, 24)
@@ -155,8 +151,12 @@ private struct HeaderPanel: View {
     }
 
     private var ringHelpText: String {
+        if account.connectionKind == .apiToken {
+            return "Outer ring: requests per minute. Inner ring: tokens per minute."
+        }
+
         let sessionWindow = QuotaFormatting.windowDuration(account.sessionWindowMinutes)
-        return "Outer ring: weekly limit. Inner ring: \(sessionWindow) session."
+        return "Outer ring: \(sessionWindow) session. Inner ring: weekly limit."
     }
 
     private var headerBackground: some View {
@@ -282,25 +282,23 @@ private struct HeaderPanel: View {
 
 }
 
-private struct AccountIdentifierRow: View {
+private struct AccountEmailRow: View {
     var account: QuotaAccount
+    var email: String
     @State private var didCopy = false
-    private var canCopyIdentifier: Bool {
-        !account.copyableAccountIdentifier.isEmpty
-    }
 
     var body: some View {
         HStack(spacing: 7) {
-            Text("Session ID \(account.shortAccountIdentifier)")
-                .font(.system(size: 12, weight: .semibold, design: .monospaced))
+            Text(email)
+                .font(.system(size: 13, weight: .medium))
                 .foregroundStyle(.secondary)
                 .lineLimit(1)
                 .truncationMode(.middle)
 
-            Button(action: copyIdentifier) {
+            Button(action: copyEmail) {
                 Image(systemName: didCopy ? "checkmark" : "doc.on.doc")
                     .font(.system(size: 10, weight: .bold))
-                    .foregroundStyle(copyIconColor)
+                    .foregroundStyle(didCopy ? Color(hex: account.colorHex) : .secondary)
                     .frame(width: 22, height: 22)
                     .background(Color(nsColor: .textBackgroundColor).opacity(0.68), in: Circle())
                     .overlay {
@@ -309,27 +307,14 @@ private struct AccountIdentifierRow: View {
                     }
             }
             .buttonStyle(.plain)
-            .disabled(!canCopyIdentifier)
-            .help("Copy session ID")
+            .help("Copy email")
         }
-        .frame(maxWidth: 280, alignment: .leading)
+        .frame(maxWidth: 320, alignment: .leading)
     }
 
-    private var copyIconColor: Color {
-        if didCopy {
-            return Color(hex: account.colorHex)
-        }
-
-        return canCopyIdentifier ? Color.secondary : Color.secondary.opacity(0.42)
-    }
-
-    private func copyIdentifier() {
-        guard canCopyIdentifier else {
-            return
-        }
-
+    private func copyEmail() {
         NSPasteboard.general.clearContents()
-        NSPasteboard.general.setString(account.copyableAccountIdentifier, forType: .string)
+        NSPasteboard.general.setString(email, forType: .string)
         didCopy = true
 
         DispatchQueue.main.asyncAfter(deadline: .now() + 1.1) {

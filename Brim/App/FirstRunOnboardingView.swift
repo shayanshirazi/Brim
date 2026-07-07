@@ -149,7 +149,7 @@ private struct OnboardingQuotaInstrument: View {
                 .scaleEffect(isAwake ? 1 : 0.92)
 
             VStack(spacing: 8) {
-                QuotaRingView(account: previewAccount, diameter: 112, lineWidth: 9, showPercent: false)
+                QuotaRingView(account: previewAccount, diameter: 112, showPercent: false)
                     .frame(width: 134, height: 134)
                     .background(.regularMaterial, in: RoundedRectangle(cornerRadius: 28, style: .continuous))
                     .overlay {

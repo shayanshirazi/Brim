@@ -112,7 +112,7 @@ struct BrimWidgetView: View {
             accounts: entry.accounts,
             family: family,
             selectedAccountID: entry.selectedAccountID,
-            isAccountTextHidden: entry.isAccountTextHidden,
+            isAccountTextHidden: false,
             pageIndex: entry.pageIndex,
             surfaceStyle: .none,
             accountSlotDecorator: { account, slot in
@@ -133,60 +133,40 @@ struct BrimWidgetView: View {
             },
             controls: {
                 AnyView(
-                    WidgetControls(family: family, isAccountTextHidden: entry.isAccountTextHidden)
+                    WidgetControls(family: family)
                 )
             }
         )
+        // Native glass: let the system render the material. A solid-looking result
+        // comes from system settings (widget style Monochrome, "Dim widgets on
+        // desktop", or Reduce Transparency), not from this code.
         .containerBackground(for: .widget) {
-            DesktopWidgetSurface(cornerRadius: family.cornerRadius)
+            Color.clear.background(.ultraThinMaterial)
         }
     }
 }
 
 private struct WidgetControls: View {
-    @Environment(\.widgetRenderingMode) private var widgetRenderingMode
-
     var family: WidgetFamilyShape
-    var isAccountTextHidden: Bool
-
-    private var isVibrant: Bool {
-        widgetRenderingMode == .vibrant
-    }
 
     private var controlForeground: Color {
-        (isVibrant ? Color(hex: "#24586E") : Color(hex: "#173B46")).opacity(0.76)
-    }
-
-    private var controlBackground: Color {
-        (isVibrant ? Color(hex: "#1B6F95") : Color(hex: "#173B46")).opacity(0.08)
+        Color.primary.opacity(0.55)
     }
 
     var body: some View {
-        HStack(spacing: family.controlSpacing) {
-            Button(intent: ToggleAccountTextVisibilityIntent()) {
-                controlIcon(isAccountTextHidden ? "eye.slash" : "eye")
+        if let editURL = URL(string: AppRoute.accounts.urlString) {
+            Link(destination: editURL) {
+                controlIcon("pencil")
             }
             .buttonStyle(.plain)
-
-            if let editURL = URL(string: AppRoute.accounts.urlString) {
-                Link(destination: editURL) {
-                    controlIcon("pencil")
-                }
-                .buttonStyle(.plain)
-            }
         }
     }
 
     private func controlIcon(_ systemName: String) -> some View {
         Image(systemName: systemName)
-            .font(.system(size: family.controlIconSize, weight: .semibold, design: .rounded))
+            .font(.system(size: family.controlIconSize + 2, weight: .semibold, design: .rounded))
             .foregroundStyle(controlForeground)
             .frame(width: family.controlButtonSize, height: family.controlButtonSize)
-            .background(controlBackground, in: Circle())
-            .overlay {
-                Circle()
-                    .stroke(controlForeground.opacity(0.12), lineWidth: 0.8)
-            }
     }
 }
 
@@ -202,6 +182,8 @@ struct BrimWidget: Widget {
         .description("Track weekly quota across local accounts.")
         .supportedFamilies([.systemSmall, .systemMedium])
         .contentMarginsDisabled()
-        .containerBackgroundRemovable(false)
+        // The background must stay removable: on the macOS desktop the system strips
+        // it and draws the same frosted glass Apple's widgets get. Forcing it off
+        // renders our background as an opaque card instead.
     }
 }

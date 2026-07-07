@@ -13,8 +13,8 @@ public enum WidgetFamilyShape {
 
     public var ringDiameter: CGFloat {
         switch self {
-        case .small: return 54
-        case .medium: return 52
+        case .small: return 64
+        case .medium: return 64
         }
     }
 
@@ -22,42 +22,33 @@ public enum WidgetFamilyShape {
 
     public var accountSpacing: CGFloat {
         switch self {
-        case .small: return 13
-        case .medium: return 16
+        case .small: return 12
+        case .medium: return 12
         }
     }
 
     public var accountSlotWidth: CGFloat {
         switch self {
-        case .small: return 60
-        case .medium: return 58
+        case .small: return 68
+        case .medium: return 68
         }
     }
 
-    public var accountLabelSpacing: CGFloat { 6 }
-    public var weeklyLabelFontSize: CGFloat { 9 }
-    public var weeklyLabelHeight: CGFloat { 11 }
-    public var sessionLabelFontSize: CGFloat { 18 }
-    public var sessionLabelHeight: CGFloat { 21 }
+    public var accountLabelSpacing: CGFloat { 4 }
+    public var weeklyLabelFontSize: CGFloat { 10 }
+    public var weeklyLabelHeight: CGFloat { 12 }
+    public var sessionLabelFontSize: CGFloat { 13 }
+    public var sessionLabelHeight: CGFloat { 15 }
+
+    /// Half the label stack height — shifts pager chevrons up so they center on the rings.
+    public var pagerRingCenteringOffset: CGFloat {
+        (accountLabelSpacing + sessionLabelHeight + 1 + weeklyLabelHeight) / 2
+    }
 
     public var horizontalPadding: CGFloat {
         switch self {
         case .small: return 15
         case .medium: return 16
-        }
-    }
-
-    public var verticalPadding: CGFloat {
-        switch self {
-        case .small: return 15
-        case .medium: return 13
-        }
-    }
-
-    public var accountRowBottomPadding: CGFloat {
-        switch self {
-        case .small: return 13
-        case .medium: return 24
         }
     }
 
@@ -77,7 +68,7 @@ public enum WidgetFamilyShape {
         }
     }
 
-    public var controlButtonPadding: CGFloat { 10 }
+    public var controlButtonPadding: CGFloat { 7 }
 
     public var controlSpacing: CGFloat {
         switch self {
@@ -107,40 +98,10 @@ public enum WidgetFamilyShape {
         }
     }
 
-    public var resetInfoWidth: CGFloat {
-        switch self {
-        case .small: return 0
-        case .medium: return 220
-        }
-    }
 
-    public var resetInfoLeadingPadding: CGFloat {
-        switch self {
-        case .small: return 0
-        case .medium: return 18
-        }
-    }
 
-    public var resetInfoBottomPadding: CGFloat {
-        switch self {
-        case .small: return 0
-        case .medium: return 11
-        }
-    }
 
-    public var resetInfoPrimaryFontSize: CGFloat {
-        switch self {
-        case .small: return 0
-        case .medium: return 10
-        }
-    }
 
-    public var resetInfoSecondaryFontSize: CGFloat {
-        switch self {
-        case .small: return 0
-        case .medium: return 9
-        }
-    }
 
     public var showsDetails: Bool {
         switch self {

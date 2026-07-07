@@ -11,6 +11,8 @@ struct AccountSidebar: View {
     var selectAccount: (QuotaAccount.ID) -> Void
     var isSettingsSelected: Bool = false
     var openSettings: () -> Void = {}
+    var refreshAllAccounts: () -> Void = {}
+    var isRefreshingAll: Bool = false
 
     @State private var draggingAccountID: QuotaAccount.ID?
     @State private var dropTargetAccountID: QuotaAccount.ID?
@@ -37,15 +39,35 @@ struct AccountSidebar: View {
 
                 Spacer()
 
-                Button(action: addAccount) {
-                    Image(systemName: "plus")
-                        .font(.system(size: 15, weight: .semibold))
-                        .foregroundStyle(.primary.opacity(0.68))
-                        .frame(width: 32, height: 32)
-                        .background(Color.primary.opacity(0.045), in: Circle())
+                HStack(spacing: 8) {
+                    Button(action: refreshAllAccounts) {
+                        Image(systemName: "arrow.triangle.2.circlepath")
+                            .font(.system(size: 11, weight: .semibold))
+                            .foregroundStyle(.primary.opacity(0.68))
+                            .rotationEffect(.degrees(isRefreshingAll ? 360 : 0))
+                            .animation(
+                                isRefreshingAll
+                                    ? .linear(duration: 0.9).repeatForever(autoreverses: false)
+                                    : .default,
+                                value: isRefreshingAll
+                            )
+                            .frame(width: 26, height: 26)
+                            .background(Color.primary.opacity(0.045), in: Circle())
+                    }
+                    .buttonStyle(.plain)
+                    .disabled(isRefreshingAll)
+                    .help("Refresh all accounts")
+
+                    Button(action: addAccount) {
+                        Image(systemName: "plus")
+                            .font(.system(size: 12, weight: .semibold))
+                            .foregroundStyle(.primary.opacity(0.68))
+                            .frame(width: 26, height: 26)
+                            .background(Color.primary.opacity(0.045), in: Circle())
+                    }
+                    .buttonStyle(.plain)
+                    .help("Add account")
                 }
-                .buttonStyle(.plain)
-                .help("Add account")
             }
             .padding(.horizontal, 20)
             .padding(.top, 22)
@@ -230,9 +252,13 @@ private struct AccountSidebarRow: View {
                                     in: RoundedRectangle(cornerRadius: 6, style: .continuous)
                                 )
                         } else {
-                            Text(account.name)
-                                .font(.system(size: 13, weight: .semibold, design: .rounded))
-                                .lineLimit(1)
+                            HStack(spacing: 6) {
+                                ProviderLogoMark(provider: account.provider, size: 18)
+
+                                Text(account.name)
+                                    .font(.system(size: 13, weight: .semibold, design: .rounded))
+                                    .lineLimit(1)
+                            }
                         }
 
                         Text(account.usageSummaryText)

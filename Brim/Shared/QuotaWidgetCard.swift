@@ -2,8 +2,6 @@ import SwiftUI
 import WidgetKit
 
 public struct QuotaWidgetCard: View {
-    @Environment(\.widgetRenderingMode) private var widgetRenderingMode
-
     public var accounts: [QuotaAccount]
     public var family: WidgetFamilyShape
     public var showsEditLink: Bool
@@ -27,16 +25,8 @@ public struct QuotaWidgetCard: View {
         self.pageIndex = pageIndex
     }
 
-    private var isVibrant: Bool {
-        widgetRenderingMode == .vibrant
-    }
-
     private var controlForeground: Color {
-        isVibrant ? Color(hex: "#24586E").opacity(0.82) : Color.white.opacity(0.82)
-    }
-
-    private var controlBackground: Color {
-        isVibrant ? Color(hex: "#1B6F95").opacity(0.10) : Color.white.opacity(0.16)
+        Color.primary.opacity(0.55)
     }
 
     public var body: some View {
@@ -57,26 +47,17 @@ public struct QuotaWidgetCard: View {
         }
 
         return AnyView(
-            HStack(spacing: family.controlSpacing) {
-                controlIcon(isAccountTextHidden ? "eye.slash" : "eye")
-
-                Link(destination: editURL) {
-                    controlIcon("pencil")
-                }
-                .buttonStyle(.plain)
+            Link(destination: editURL) {
+                controlIcon("pencil")
             }
+            .buttonStyle(.plain)
         )
     }
 
     private func controlIcon(_ systemName: String) -> some View {
         Image(systemName: systemName)
-            .font(.system(size: family.controlIconSize, weight: .semibold, design: .rounded))
+            .font(.system(size: family.controlIconSize + 2, weight: .semibold, design: .rounded))
             .foregroundStyle(controlForeground)
             .frame(width: family.controlButtonSize, height: family.controlButtonSize)
-            .background(controlBackground, in: Circle())
-            .overlay {
-                Circle()
-                    .stroke(Color.white.opacity(isVibrant ? 0.10 : 0.20), lineWidth: 0.8)
-            }
     }
 }

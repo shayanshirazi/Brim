@@ -120,3 +120,20 @@ extension View {
             }
     }
 }
+
+/// Small monochrome provider logo shown next to account names.
+struct ProviderLogoMark: View {
+    var provider: QuotaProviderKind
+    var size: CGFloat
+
+    var body: some View {
+        if let assetName = provider.logoAssetName {
+            Image(assetName)
+                .resizable()
+                .scaledToFit()
+                .frame(width: size, height: size)
+                .help(provider.displayName)
+                .accessibilityLabel(provider.displayName)
+        }
+    }
+}

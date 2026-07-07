@@ -303,28 +303,28 @@ private final class URLProtocolMock: URLProtocol {
 }
 
 final class QuotaAccountColorTests: XCTestCase {
-    func testNewAccountUsesFirstUnusedPresetColour() {
+    func testNewAccountUsesFirstUnusedPresetColor() {
         let color = QuotaAccountDefaults.colorHexForNewAccount(
-            existingColorHexes: ["#d7ea48", "#65D6FF"]
+            existingColorHexes: ["#22c55e", "#06B6D4"]
         )
 
-        XCTAssertEqual(color, "#40E06B")
+        XCTAssertEqual(color, "#3B82F6")
     }
 
-    func testAddAccountUsesFirstUnusedPresetColourFromExistingAccounts() {
+    func testAddAccountUsesFirstUnusedPresetColorFromExistingAccounts() {
         var state = QuotaState(
             accounts: [
-                testAccount(name: "First", colorHex: "#D7EA48"),
-                testAccount(name: "Third", colorHex: "#65D6FF")
+                testAccount(name: "First", colorHex: "#22C55E"),
+                testAccount(name: "Third", colorHex: "#06B6D4")
             ]
         )
 
         state.addAccount()
 
-        XCTAssertEqual(state.accounts.last?.colorHex, "#40E06B")
+        XCTAssertEqual(state.accounts.last?.colorHex, "#3B82F6")
     }
 
-    func testNewAccountUsesCustomColourWhenPresetColoursAreExhausted() throws {
+    func testNewAccountUsesCustomColorWhenPresetColorsAreExhausted() throws {
         let color = QuotaAccountDefaults.colorHexForNewAccount(
             existingColorHexes: QuotaAccountDefaults.presetColorHexes
         )

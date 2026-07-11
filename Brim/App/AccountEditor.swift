@@ -7,34 +7,28 @@ struct AccountEditor: View {
 
     private let detailPanelMinHeight: CGFloat = 372
 
-    private var profilePath: Binding<String> {
-        Binding(
-            get: { account.resolvedProviderProfilePath },
-            set: { account.providerProfilePath = $0 }
-        )
-    }
-
     var body: some View {
         VStack(alignment: .leading, spacing: 18) {
             HeaderPanel(account: $account)
 
             GeometryReader { geometry in
                 let detailHeight = max(detailPanelMinHeight, geometry.size.height)
+                let panelSpacing: CGFloat = 16
+                let availablePanelWidth = max(0, geometry.size.width - panelSpacing)
+                let setupPanelWidth = availablePanelWidth * 0.48
+                let usagePanelWidth = availablePanelWidth - setupPanelWidth
 
-                HStack(alignment: .top, spacing: 18) {
-                    DetailPanelSurface(height: detailHeight) {
+                HStack(alignment: .top, spacing: panelSpacing) {
+                    DetailPanelSurface(width: setupPanelWidth, height: detailHeight) {
                         ProviderProfilePanel(
                             account: $account,
-                            profilePath: profilePath,
                             openPersonalizationSettings: openPersonalizationSettings
                         )
                     }
-                    .frame(maxWidth: .infinity)
 
-                    DetailPanelSurface(height: detailHeight) {
+                    DetailPanelSurface(width: usagePanelWidth, height: detailHeight) {
                         UsagePanel(account: $account)
                     }
-                    .frame(maxWidth: .infinity)
                 }
                 .frame(width: geometry.size.width, height: detailHeight, alignment: .top)
             }
@@ -46,6 +40,7 @@ struct AccountEditor: View {
 }
 
 private struct DetailPanelSurface<Content: View>: View {
+    var width: CGFloat
     var height: CGFloat
     @ViewBuilder var content: () -> Content
 
@@ -53,13 +48,13 @@ private struct DetailPanelSurface<Content: View>: View {
         content()
             .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
             .padding(18)
-            .frame(maxWidth: .infinity)
-            .frame(height: height, alignment: .topLeading)
+            .frame(width: width, height: height, alignment: .topLeading)
             .background(.regularMaterial, in: RoundedRectangle(cornerRadius: 16, style: .continuous))
             .overlay {
                 RoundedRectangle(cornerRadius: 16, style: .continuous)
                     .stroke(Color.white.opacity(0.18), lineWidth: 1)
             }
+            .clipShape(RoundedRectangle(cornerRadius: 16, style: .continuous))
     }
 }
 
@@ -125,6 +120,8 @@ private struct HeaderPanel: View {
 
                 ConnectionStatusPill(account: account)
             }
+            .fixedSize(horizontal: true, vertical: false)
+            .padding(.trailing, 8)
         }
         .frame(minHeight: 104, alignment: .center)
         .padding(.horizontal, 24)
@@ -340,6 +337,7 @@ struct ConnectionStatusPill: View {
             Text(account.signalState.title)
                 .font(.system(size: 14, weight: .bold, design: .rounded))
                 .lineLimit(1)
+                .fixedSize(horizontal: true, vertical: false)
         }
         .padding(.horizontal, 14)
         .padding(.vertical, 9)
@@ -380,6 +378,8 @@ struct ConnectionStatusPill: View {
             return Color(hex: "#E58C30")
         case .manual:
             return Color.secondary
+        case .dashboardOnly:
+            return Color(hex: account.provider.brandColorHex)
         case .notConnected:
             return Color(hex: "#FF4D57")
         }

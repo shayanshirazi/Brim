@@ -1,57 +1,43 @@
 import AppKit
+import OSLog
 import SwiftUI
 
 struct ProviderProfilePanel: View {
+    private static let logger = Logger(subsystem: "com.brim.app", category: "credentials")
+
     @EnvironmentObject private var store: QuotaStore
     @Binding var account: QuotaAccount
-    @Binding var profilePath: String
     @State private var apiToken = ""
     @State private var selectedConnectionKind: QuotaConnectionKind
     @State private var loginFlowState: ProviderLoginFlowState = .idle
     @State private var didCopyAPIToken = false
     @State private var apiTokenIsSaving = false
     @State private var savedAPITokenPreview: String?
+    @State private var credentialAccessMessage: String?
     @State private var showsProfileLocation = false
+    @State private var didCopyProfileLocation = false
     @AppStorage(BrimRefreshInterval.storageKey) private var refreshIntervalSeconds = BrimRefreshInterval.defaultSeconds
     var openPersonalizationSettings: () -> Void
 
     init(
         account: Binding<QuotaAccount>,
-        profilePath: Binding<String>,
         openPersonalizationSettings: @escaping () -> Void = {}
     ) {
         _account = account
-        _profilePath = profilePath
         _selectedConnectionKind = State(initialValue: account.wrappedValue.connectionKind)
         self.openPersonalizationSettings = openPersonalizationSettings
     }
 
     var body: some View {
         VStack(alignment: .leading, spacing: 16) {
-            HStack {
-                PanelTitle(icon: "key.fill", title: "Setup")
-                Spacer()
-            }
+            ProviderSetupTitle(provider: account.provider)
 
-            HStack(spacing: 8) {
-                ConnectionMethodButton(
-                    title: "Login",
-                    icon: "person.crop.circle.badge.checkmark",
-                    isSelected: selectedConnectionKind == .login,
-                    action: { selectConnectionTab(.login) }
+            if !account.provider.supports(account.connectionKind) {
+                UnsupportedConnectionCard(
+                    provider: account.provider,
+                    switchAction: switchToSupportedConnection
                 )
-
-                ConnectionMethodButton(
-                    title: "API token",
-                    icon: "key.horizontal",
-                    isSelected: selectedConnectionKind == .apiToken,
-                    action: { selectConnectionTab(.apiToken) }
-                )
-            }
-            .padding(4)
-            .background(Color.primary.opacity(0.025), in: RoundedRectangle(cornerRadius: 12, style: .continuous))
-
-            if selectedConnectionKind == .apiToken {
+            } else if account.provider == .gemini {
                 APITokenConnectionCard(
                     token: $apiToken,
                     provider: account.provider,
@@ -66,8 +52,8 @@ struct ProviderProfilePanel: View {
                     revokeAction: confirmRevokeAPIToken,
                     copyAction: copySavedAPIToken
                 )
-            } else {
-                VStack(alignment: .leading, spacing: 12) {
+            } else if account.provider == .codex {
+                VStack(alignment: .leading, spacing: 16) {
                     ProviderConnectionCard(
                         state: resolvedLoginFlowState,
                         provider: account.provider,
@@ -77,11 +63,13 @@ struct ProviderProfilePanel: View {
 
                     profileLocationDisclosure
                 }
+            } else {
+                ProviderDashboardCard(provider: account.provider)
             }
 
             Spacer(minLength: 0)
         }
-        .padding(.bottom, 24)
+        .padding(.bottom, 44)
         .frame(minHeight: 0, maxHeight: .infinity, alignment: .topLeading)
         .overlay(alignment: .bottom) {
             setupFooter
@@ -96,7 +84,9 @@ struct ProviderProfilePanel: View {
             apiToken = ""
             didCopyAPIToken = false
             apiTokenIsSaving = false
+            credentialAccessMessage = nil
             showsProfileLocation = false
+            didCopyProfileLocation = false
             refreshSavedAPITokenPreview()
         }
         .onChange(of: account.connectionKind) { _, kind in
@@ -106,69 +96,162 @@ struct ProviderProfilePanel: View {
     }
 
     private var setupFooter: some View {
-        HStack(spacing: 7) {
-            Image(systemName: "arrow.triangle.2.circlepath")
-                .foregroundStyle(.secondary)
+        VStack(spacing: 10) {
+            Rectangle()
+                .fill(Color.primary.opacity(0.075))
+                .frame(height: 1)
 
-            Text("Every")
-                .foregroundStyle(.secondary)
+            HStack(spacing: 10) {
+                if account.provider.performsAutomaticRefresh {
+                    Button(action: openPersonalizationSettings) {
+                        HStack(spacing: 6) {
+                            Image(systemName: "arrow.triangle.2.circlepath")
 
-            Button(action: openPersonalizationSettings) {
-                Text(BrimRefreshInterval.displayTitle(for: refreshIntervalSeconds))
-                    .underline(true, color: .secondary)
+                            Text("Refresh every")
+                                .foregroundStyle(.secondary)
+
+                            Text(BrimRefreshInterval.displayTitle(for: refreshIntervalSeconds))
+                                .foregroundStyle(.primary)
+                                .underline()
+                        }
+                    }
+                    .buttonStyle(.plain)
+                    .help("Change refresh frequency")
+                } else {
+                    Label(
+                        account.provider.usesProviderDashboard ? "Usage stays with \(account.provider.displayName)" : "Check on demand",
+                        systemImage: account.provider.usesProviderDashboard ? "hand.raised.fill" : "arrow.clockwise"
+                    )
+                    .foregroundStyle(.secondary)
+                }
+
+                Spacer(minLength: 8)
+
+                Label(footerPrivacyTitle, systemImage: "lock.fill")
+                    .foregroundStyle(.secondary)
+                    .help(footerPrivacyHelp)
             }
-            .buttonStyle(.plain)
-            .foregroundStyle(.secondary)
-            .help("Change refresh frequency")
-
-            Spacer(minLength: 8)
-
-            Label("Keychain", systemImage: "lock.fill")
-                .foregroundStyle(.secondary)
-                .help("Tokens stay in Keychain.")
         }
-        .font(.system(size: 11, weight: .medium, design: .rounded))
+        .font(.system(size: 10.5, weight: .semibold, design: .rounded))
         .lineLimit(1)
         .minimumScaleFactor(0.88)
         .frame(maxWidth: .infinity)
-        .frame(height: 28, alignment: .center)
+        .frame(height: 36, alignment: .bottom)
+    }
+
+    private var footerPrivacyTitle: String {
+        if account.provider.usesProviderDashboard {
+            return "No credentials shared"
+        }
+        return selectedConnectionKind == .apiToken ? apiCredentialStorageTitle : "Private OAuth profile"
+    }
+
+    private var footerPrivacyHelp: String {
+        if account.provider.usesProviderDashboard {
+            return "Brim opens the provider dashboard and never receives your login."
+        }
+        return selectedConnectionKind == .apiToken
+            ? apiCredentialStorageHelp
+            : "Login credentials stay in this account's private Brim profile."
+    }
+
+    private var apiCredentialStorageTitle: String {
+#if BRIM_CERTIFICATE_FREE_DEBUG
+        "Private Debug storage"
+#else
+        "API key in Keychain"
+#endif
+    }
+
+    private var apiCredentialStorageHelp: String {
+#if BRIM_CERTIFICATE_FREE_DEBUG
+        "Certificate-free Debug builds keep API keys in a private sandbox file."
+#else
+        "API keys stay in Keychain."
+#endif
     }
 
     private var profileLocationDisclosure: some View {
-        // Reserve the expanded footprint so toggling never reflows the panel or
-        // footer. The sizing copy is a non-interactive placeholder so focus and
-        // accessibility never land on an invisible control.
-        ZStack(alignment: .top) {
-            profileLocationGroup(isExpanded: .constant(true), placeholder: true)
-                .hidden()
-                .accessibilityHidden(true)
-                .allowsHitTesting(false)
+        VStack(spacing: 0) {
+            Button {
+                withAnimation(.snappy(duration: 0.20)) {
+                    showsProfileLocation.toggle()
+                }
+            } label: {
+                HStack(spacing: 8) {
+                    Image(systemName: "folder")
+                        .font(.system(size: 11, weight: .semibold))
+                        .foregroundStyle(Color(hex: account.provider.brandColorHex).opacity(0.78))
 
-            profileLocationGroup(isExpanded: $showsProfileLocation)
+                    Text("Profile location")
+                        .font(.system(size: 11, weight: .bold, design: .rounded))
+                        .foregroundStyle(.secondary)
+
+                    Spacer()
+
+                    Image(systemName: "chevron.right")
+                        .font(.system(size: 9, weight: .bold))
+                        .foregroundStyle(.tertiary)
+                        .rotationEffect(.degrees(showsProfileLocation ? 90 : 0))
+                }
+                .padding(.horizontal, 12)
+                .frame(height: 38)
+                .contentShape(Rectangle())
+            }
+            .buttonStyle(.plain)
+
+            if showsProfileLocation {
+                Rectangle()
+                    .fill(Color.primary.opacity(0.065))
+                    .frame(height: 1)
+                    .padding(.horizontal, 10)
+
+                HStack(spacing: 8) {
+                    Text(account.resolvedProviderProfilePath)
+                        .font(.system(size: 10.5, weight: .medium, design: .monospaced))
+                        .foregroundStyle(.secondary)
+                        .lineLimit(1)
+                        .truncationMode(.middle)
+                        .textSelection(.enabled)
+
+                    Spacer(minLength: 6)
+
+                    Button(action: copyProfileLocation) {
+                        Image(systemName: didCopyProfileLocation ? "checkmark" : "doc.on.doc")
+                            .font(.system(size: 9.5, weight: .bold))
+                            .foregroundStyle(
+                                didCopyProfileLocation
+                                    ? Color(hex: account.provider.brandColorHex)
+                                    : Color.secondary
+                            )
+                            .frame(width: 24, height: 24)
+                            .background(Color.primary.opacity(0.045), in: Circle())
+                    }
+                    .buttonStyle(.plain)
+                    .help("Copy profile location")
+                }
+                .padding(.leading, 12)
+                .padding(.trailing, 8)
+                .frame(height: 38)
+                .transition(.opacity.combined(with: .move(edge: .top)))
+            }
         }
+        .background(Color.primary.opacity(0.025), in: RoundedRectangle(cornerRadius: 11, style: .continuous))
+        .overlay {
+            RoundedRectangle(cornerRadius: 11, style: .continuous)
+                .stroke(Color.primary.opacity(0.07), lineWidth: 1)
+        }
+        .clipShape(RoundedRectangle(cornerRadius: 11, style: .continuous))
     }
 
-    private func profileLocationGroup(isExpanded: Binding<Bool>, placeholder: Bool = false) -> some View {
-        DisclosureGroup(isExpanded: isExpanded) {
-            Group {
-                if placeholder {
-                    Color.clear
-                } else {
-                    TextField("Profile path", text: $profilePath)
-                        .textFieldStyle(.plain)
-                        .font(.system(size: 11, weight: .medium, design: .monospaced))
-                        .padding(.horizontal, 11)
-                        .background(Color(nsColor: .textBackgroundColor), in: RoundedRectangle(cornerRadius: 9, style: .continuous))
-                }
-            }
-            .frame(height: 34)
-            .padding(.top, 8)
-        } label: {
-            Text("Profile location")
-                .font(.system(size: 11, weight: .bold, design: .rounded))
-                .foregroundStyle(.secondary)
+    private func copyProfileLocation() {
+        NSPasteboard.general.clearContents()
+        NSPasteboard.general.setString(account.resolvedProviderProfilePath, forType: .string)
+        didCopyProfileLocation = true
+
+        DispatchQueue.main.asyncAfter(deadline: .now() + 1.1) {
+            didCopyProfileLocation = false
         }
-        .tint(.secondary)
     }
 
     private var resolvedLoginFlowState: ProviderLoginFlowState {
@@ -187,7 +270,7 @@ struct ProviderProfilePanel: View {
             return account.hasUsageSnapshot ? .checking : .connected
         case .refreshFailed:
             return .failed(account.refreshMessage ?? "Brim could not check the \(account.provider.displayName) session.")
-        case .notConnected, .manual:
+        case .notConnected, .manual, .dashboardOnly:
             return .idle
         }
     }
@@ -209,12 +292,16 @@ struct ProviderProfilePanel: View {
     }
 
     private var hasSavedAPIToken: Bool {
-        savedAPITokenPreview != nil
+        account.credentialID != nil
     }
 
     private var apiTokenStatusKind: ConnectionStatusKind {
         if apiTokenIsSaving {
             return .working
+        }
+
+        if credentialAccessMessage != nil {
+            return .needsAttention
         }
 
         guard account.connectionKind == .apiToken, hasSavedAPIToken else {
@@ -227,8 +314,8 @@ struct ProviderProfilePanel: View {
         case .refreshFailed:
             return .needsAttention
         case .notConnected:
-            return .idle
-        case .ready, .manual:
+            return .needsAttention
+        case .ready, .manual, .dashboardOnly:
             return .ready
         }
     }
@@ -242,28 +329,53 @@ struct ProviderProfilePanel: View {
 
     private var apiTokenStatusMessage: String {
         if apiTokenIsSaving {
-            return "Validating the API token with OpenAI."
+            return "Validating the API token with \(account.provider.displayName)."
         }
 
         if account.connectionKind == .apiToken, hasSavedAPIToken {
+            if let credentialAccessMessage {
+                return credentialAccessMessage
+            }
             if account.refreshStatus == .waitingForQuotaSource {
                 return "Checking the saved token."
             }
-            if account.refreshStatus == .refreshFailed, let message = account.refreshMessage {
+            if let message = account.refreshMessage {
                 return message
             }
 
-            return "Saved in Keychain for this account."
+            return "Saved in private credential storage for this account."
         }
 
-        return "Save a valid OpenAI API key in Keychain for this account."
+        return "Save a valid \(account.provider.displayName) API key for this account."
     }
 
-    private func selectConnectionTab(_ kind: QuotaConnectionKind) {
-        selectedConnectionKind = kind
+    private func switchToSupportedConnection() {
+        let supportedConnectionKind = account.provider.supportedConnectionKind
+        if account.connectionKind == .apiToken {
+            do {
+                try CredentialStore.shared.deleteAPIToken(credentialID: account.credentialID)
+            } catch {
+                credentialAccessMessage = error.localizedDescription
+                return
+            }
+        }
+
+        var migratedAccount = account.disconnectedProviderAccount(
+            message: supportedConnectionKind == .login
+                ? "Sign in with \(account.provider.displayName) to connect this account."
+                : "Add a \(account.provider.displayName) API key to connect this account."
+        )
+        migratedAccount.connectionKind = supportedConnectionKind
+        store.updateAccount(migratedAccount)
+        selectedConnectionKind = supportedConnectionKind
+        savedAPITokenPreview = nil
+        credentialAccessMessage = nil
     }
 
     private func startProviderLogin() {
+        let initiatingAccountID = account.id
+        let initiatingAccountSnapshot = account
+        let expandedProfilePath = QuotaFormatting.expandedHomePath(account.resolvedProviderProfilePath)
         selectedConnectionKind = .login
         account.connectionKind = .login
         loginFlowState = .openingBrowser
@@ -271,40 +383,62 @@ struct ProviderProfilePanel: View {
         account.lastRefreshAttemptAt = Date()
         account.refreshMessage = "Opening Codex sign-in in your browser."
 
-        Task {
-            let expandedProfilePath = QuotaFormatting.expandedHomePath(profilePath)
+        Task { @MainActor in
             let loginResult = await CodexCommandRunner.startBrowserLogin(profilePath: expandedProfilePath)
             if loginResult.exitCode == 0 {
-                account.connectionKind = .login
-                account.refreshStatus = .ready
-                account.refreshMessage = "\(account.provider.displayName) login is connected. Exact usage opens in \(account.provider.displayName)."
-                account.lastSuccessfulRefreshAt = Date()
-                await store.refreshAccount(id: account.id)
-                loginFlowState = .connected
+                guard var initiatingAccount = store.accounts.first(where: { $0.id == initiatingAccountID }) else {
+                    do {
+                        try ProviderProfileStorage.removeOwnedProfileIfUnreferenced(
+                            for: initiatingAccountSnapshot,
+                            remainingAccounts: store.accounts
+                        )
+                    } catch {
+                        Self.logger.error("Could not clean up a login profile after its account disappeared: \(error.localizedDescription, privacy: .public)")
+                    }
+                    return
+                }
+                initiatingAccount.connectionKind = .login
+                initiatingAccount.refreshStatus = .ready
+                initiatingAccount.refreshMessage = "\(initiatingAccount.provider.displayName) login is connected."
+                initiatingAccount.lastSuccessfulRefreshAt = Date()
+                store.updateAccount(initiatingAccount)
+                await store.refreshAccount(id: initiatingAccountID)
+                if account.id == initiatingAccountID {
+                    loginFlowState = .connected
+                }
                 return
             }
 
-            markLoginFailure(loginResult)
+            markLoginFailure(loginResult, accountID: initiatingAccountID)
         }
     }
 
     private func checkProviderLogin() {
+        let initiatingAccountID = account.id
+        let expandedProfilePath = QuotaFormatting.expandedHomePath(account.resolvedProviderProfilePath)
         selectedConnectionKind = .login
         account.connectionKind = .login
         loginFlowState = .checking
         account.refreshStatus = .waitingForQuotaSource
         account.lastRefreshAttemptAt = Date()
 
-        Task {
-            let expandedProfilePath = QuotaFormatting.expandedHomePath(profilePath)
+        Task { @MainActor in
             if CodexProfileAuthStore.hasUsableTokens(profilePath: expandedProfilePath) {
-                await store.refreshAccount(id: account.id)
-                loginFlowState = .connected
+                await store.refreshAccount(id: initiatingAccountID)
+                if account.id == initiatingAccountID {
+                    loginFlowState = .connected
+                }
             } else {
-                account.hasUsageSnapshot = false
-                account.refreshStatus = .notConnected
-                account.refreshMessage = "Sign in with \(account.provider.displayName) to connect this account."
-                loginFlowState = .idle
+                guard var initiatingAccount = store.accounts.first(where: { $0.id == initiatingAccountID }) else {
+                    return
+                }
+                initiatingAccount.hasUsageSnapshot = false
+                initiatingAccount.refreshStatus = .notConnected
+                initiatingAccount.refreshMessage = "Sign in with \(initiatingAccount.provider.displayName) to connect this account."
+                store.updateAccount(initiatingAccount)
+                if account.id == initiatingAccountID {
+                    loginFlowState = .idle
+                }
             }
         }
     }
@@ -325,6 +459,8 @@ struct ProviderProfilePanel: View {
     }
 
     private func logoutProvider() {
+        let initiatingAccountID = account.id
+        let initiatingAccountSnapshot = account
         selectedConnectionKind = .login
         account.connectionKind = .login
         loginFlowState = .loggingOut
@@ -332,25 +468,31 @@ struct ProviderProfilePanel: View {
         account.refreshMessage = "Signing out of \(account.provider.displayName)."
         account.lastRefreshAttemptAt = Date()
 
-        Task {
-            let expandedProfilePath = QuotaFormatting.expandedHomePath(profilePath)
+        Task { @MainActor in
             do {
-                try CodexProfileAuthStore.removeAuth(profilePath: expandedProfilePath)
+                try ProviderProfileStorage.removeOwnedAuthIfPresent(for: initiatingAccountSnapshot)
             } catch {
                 markLoginFailure(
                     CommandResult(
                         exitCode: -1,
                         standardOutput: "",
                         standardError: "Brim could not remove this Codex profile's auth file."
-                    )
+                    ),
+                    accountID: initiatingAccountID
                 )
                 return
             }
 
-            account = account.disconnectedProviderAccount(
-                message: "Sign in with \(account.provider.displayName) to connect this account."
+            guard let initiatingAccount = store.accounts.first(where: { $0.id == initiatingAccountID }) else {
+                return
+            }
+            let disconnectedAccount = initiatingAccount.disconnectedProviderAccount(
+                message: "Sign in with \(initiatingAccount.provider.displayName) to connect this account."
             )
-            loginFlowState = .idle
+            store.updateAccount(disconnectedAccount)
+            if account.id == initiatingAccountID {
+                loginFlowState = .idle
+            }
         }
     }
 
@@ -360,6 +502,8 @@ struct ProviderProfilePanel: View {
         }
 
         let token = trimmedAPIToken
+        let initiatingAccountID = account.id
+        let initiatingProvider = account.provider
         guard case .valid = APITokenValidator.validate(token, provider: account.provider) else {
             return
         }
@@ -373,29 +517,51 @@ struct ProviderProfilePanel: View {
 
         Task { @MainActor in
             do {
-                try await APITokenValidationClient().validate(token, provider: account.provider)
-                let credentialID = try CredentialStore.shared.saveAPIToken(token, accountID: account.id)
+                try await APITokenValidationClient().validate(token, provider: initiatingProvider)
+                let credentialID = try CredentialStore.shared.saveAPIToken(token, accountID: initiatingAccountID)
+                guard var initiatingAccount = store.accounts.first(where: { $0.id == initiatingAccountID }) else {
+                    do {
+                        try CredentialStore.shared.deleteAPIToken(credentialID: credentialID)
+                    } catch {
+                        Self.logger.error("Could not remove credential after its account disappeared: \(error.localizedDescription, privacy: .public)")
+                    }
+                    return
+                }
 
-                account.connectionKind = .apiToken
-                account.credentialID = credentialID
-                account.hasUsageSnapshot = false
-                account.refreshStatus = .ready
-                account.refreshMessage = "API token saved. Exact usage opens in \(account.provider.displayName)."
-                account.lastSuccessfulRefreshAt = Date()
-                apiToken = ""
-                didCopyAPIToken = false
-                savedAPITokenPreview = APITokenPreview.mask(token)
+                initiatingAccount.connectionKind = .apiToken
+                initiatingAccount.credentialID = credentialID
+                initiatingAccount.accountEmail = nil
+                initiatingAccount.providerAccountID = nil
+                initiatingAccount.hasUsageSnapshot = false
+                initiatingAccount.refreshStatus = .waitingForQuotaSource
+                initiatingAccount.refreshMessage = "API token saved. Checking live rate limits."
+                initiatingAccount.lastSuccessfulRefreshAt = nil
+                store.updateAccount(initiatingAccount)
+                if account.id == initiatingAccountID {
+                    apiToken = ""
+                    didCopyAPIToken = false
+                    savedAPITokenPreview = APITokenPreview.mask(token)
+                    credentialAccessMessage = nil
+                }
+                await store.refreshAccount(id: initiatingAccountID)
             } catch {
-                account.connectionKind = .apiToken
-                account.refreshStatus = .refreshFailed
-                account.refreshMessage = (error as? APITokenValidationError)?.message ?? "Could not validate API token."
+                if var initiatingAccount = store.accounts.first(where: { $0.id == initiatingAccountID }) {
+                    initiatingAccount.connectionKind = .apiToken
+                    initiatingAccount.refreshStatus = .refreshFailed
+                    initiatingAccount.refreshMessage = (error as? APITokenValidationError)?.message
+                        ?? error.localizedDescription
+                    store.updateAccount(initiatingAccount)
+                }
             }
 
-            apiTokenIsSaving = false
+            if account.id == initiatingAccountID {
+                apiTokenIsSaving = false
+            }
         }
     }
 
     private func refreshAPITokenAccount() {
+        let initiatingAccountID = account.id
         selectedConnectionKind = .apiToken
         account.connectionKind = .apiToken
         account.refreshStatus = .waitingForQuotaSource
@@ -403,7 +569,7 @@ struct ProviderProfilePanel: View {
         account.lastRefreshAttemptAt = Date()
 
         Task {
-            await store.refreshAccount(id: account.id)
+            await store.refreshAccount(id: initiatingAccountID)
         }
     }
 
@@ -411,7 +577,7 @@ struct ProviderProfilePanel: View {
         let alert = NSAlert()
         alert.alertStyle = .warning
         alert.messageText = "Revoke API token?"
-        alert.informativeText = "This removes the saved token for \(account.name) from Keychain on this Mac."
+        alert.informativeText = "This removes the saved token for \(account.name) from this Mac."
         alert.addButton(withTitle: "Revoke")
         alert.addButton(withTitle: "Cancel")
 
@@ -423,21 +589,26 @@ struct ProviderProfilePanel: View {
     }
 
     private func revokeAPIToken() {
-        CredentialStore.shared.deleteAPIToken(credentialID: account.credentialID)
+        do {
+            try CredentialStore.shared.deleteAPIToken(credentialID: account.credentialID)
+        } catch {
+            credentialAccessMessage = error.localizedDescription
+            return
+        }
+
+        let disconnectedAccount = account.disconnectedProviderAccount(
+            message: "Add an API token to reconnect this account."
+        )
         selectedConnectionKind = .apiToken
-        account.connectionKind = .apiToken
-        account.credentialID = nil
-        account.hasUsageSnapshot = false
-        account.refreshStatus = .notConnected
-        account.refreshMessage = "Add an API token to reconnect this account."
-        account.lastRefreshAttemptAt = Date()
-        account.lastSuccessfulRefreshAt = nil
+        store.updateAccount(disconnectedAccount)
         didCopyAPIToken = false
         savedAPITokenPreview = nil
+        credentialAccessMessage = nil
     }
 
     private func copySavedAPIToken() {
-        guard let token = CredentialStore.shared.apiToken(credentialID: account.credentialID) else {
+        guard case .token(let token) = CredentialStore.shared.readAPIToken(credentialID: account.credentialID) else {
+            refreshSavedAPITokenPreview()
             return
         }
 
@@ -458,21 +629,37 @@ struct ProviderProfilePanel: View {
     }
 
     private func refreshSavedAPITokenPreview() {
-        guard account.connectionKind == .apiToken else {
+        guard account.connectionKind == .apiToken, account.provider.supports(.apiToken) else {
             savedAPITokenPreview = nil
+            credentialAccessMessage = nil
             return
         }
 
-        savedAPITokenPreview = CredentialStore.shared
-            .apiToken(credentialID: account.credentialID)
-            .map(APITokenPreview.mask)
+        switch CredentialStore.shared.readAPIToken(credentialID: account.credentialID) {
+        case .token(let token):
+            savedAPITokenPreview = APITokenPreview.mask(token)
+            credentialAccessMessage = nil
+        case .missing:
+            savedAPITokenPreview = nil
+            credentialAccessMessage = account.credentialID == nil
+                ? nil
+                : "The saved API token is missing from local credential storage. Save it again."
+        case .inaccessible(let message):
+            savedAPITokenPreview = "Saved token unavailable"
+            credentialAccessMessage = message
+        }
     }
 
-    private func markLoginFailure(_ result: CommandResult) {
+    private func markLoginFailure(_ result: CommandResult, accountID: QuotaAccount.ID) {
         let message = commandMessage(from: result)
-        account.refreshStatus = .refreshFailed
-        account.refreshMessage = message
-        loginFlowState = .failed(message)
+        if var initiatingAccount = store.accounts.first(where: { $0.id == accountID }) {
+            initiatingAccount.refreshStatus = .refreshFailed
+            initiatingAccount.refreshMessage = message
+            store.updateAccount(initiatingAccount)
+        }
+        if account.id == accountID {
+            loginFlowState = .failed(message)
+        }
     }
 
     private func commandMessage(from result: CommandResult) -> String {
@@ -566,6 +753,10 @@ private struct ProviderConnectionCard: View {
     var primaryAction: () -> Void
     var logoutAction: () -> Void
 
+    private var accent: Color {
+        Color(hex: provider.brandColorHex)
+    }
+
     var body: some View {
         VStack(alignment: .leading, spacing: 14) {
             ConnectionStatusRow(
@@ -576,12 +767,14 @@ private struct ProviderConnectionCard: View {
             )
 
             if state == .connected {
-                HStack(spacing: 8) {
+                HStack(spacing: 10) {
                     ConnectionActionButton(
                         title: "Refresh",
                         icon: "arrow.clockwise",
                         isEnabled: true,
                         role: .primary,
+                        tint: accent,
+                        expands: false,
                         action: primaryAction
                     )
 
@@ -590,9 +783,14 @@ private struct ProviderConnectionCard: View {
                         icon: "rectangle.portrait.and.arrow.right",
                         isEnabled: true,
                         role: .destructive,
+                        tint: accent,
+                        expands: false,
                         action: logoutAction
                     )
+
+                    Spacer(minLength: 0)
                 }
+                .padding(.leading, 39)
             } else {
                 PrimaryConnectionButton(
                     title: state.buttonTitle(provider: provider),
@@ -601,19 +799,35 @@ private struct ProviderConnectionCard: View {
                 )
             }
         }
-        .padding(14)
-        .background(Color.primary.opacity(0.022), in: RoundedRectangle(cornerRadius: 13, style: .continuous))
+        .padding(16)
+        .background {
+            RoundedRectangle(cornerRadius: 14, style: .continuous)
+                .fill(
+                    LinearGradient(
+                        colors: [
+                            accent.opacity(0.075),
+                            Color.primary.opacity(0.018)
+                        ],
+                        startPoint: .topLeading,
+                        endPoint: .bottomTrailing
+                    )
+                )
+        }
+        .overlay {
+            RoundedRectangle(cornerRadius: 14, style: .continuous)
+                .stroke(accent.opacity(0.13), lineWidth: 1)
+        }
     }
 }
 
-private enum APITokenValidation: Equatable {
+enum APITokenValidation: Equatable {
     case empty
     case valid
     case invalid(String)
 }
 
-private enum APITokenValidator {
-    static func validate(_ token: String, provider: QuotaProviderKind = .codex) -> APITokenValidation {
+enum APITokenValidator {
+    static func validate(_ token: String, provider: QuotaProviderKind) -> APITokenValidation {
         guard !token.isEmpty else {
             return .empty
         }
@@ -624,17 +838,18 @@ private enum APITokenValidator {
             return .invalid("Paste the token without spaces or line breaks.")
         }
 
-        guard token.hasPrefix(provider.apiKeyPrefix) else {
-            return .invalid("\(provider.displayName) API keys begin with \(provider.apiKeyPrefix).")
+        guard provider.supportedConnectionKind == .apiToken else {
+            return .invalid("\(provider.displayName) accounts connect with Login, not an API key.")
         }
 
         guard token.count >= 24 else {
             return .invalid("That key looks too short.")
         }
 
-        let allowedCharacters = CharacterSet.alphanumerics.union(CharacterSet(charactersIn: "-_"))
-        guard token.rangeOfCharacter(from: allowedCharacters.inverted) == nil else {
-            return .invalid("That key contains an unexpected character.")
+        guard token.unicodeScalars.allSatisfy({ scalar in
+            scalar.value >= 0x21 && scalar.value <= 0x7E
+        }) else {
+            return .invalid("That key contains an unsupported character.")
         }
 
         return .valid
@@ -642,23 +857,26 @@ private enum APITokenValidator {
 }
 
 private enum APITokenValidationError: Error {
-    case rejected
-    case server(Int)
+    case unsupported(String)
+    case rejected(String)
+    case server(String, Int)
     case network(String)
 
     var message: String {
         switch self {
-        case .rejected:
-            return "OpenAI rejected this API token."
-        case .server(let statusCode):
-            return "Could not validate API token. OpenAI returned HTTP \(statusCode)."
+        case .unsupported(let providerName):
+            return "\(providerName) accounts do not support API-token connections."
+        case .rejected(let providerName):
+            return "\(providerName) rejected this API token."
+        case .server(let providerName, let statusCode):
+            return "Could not validate API token. \(providerName) returned HTTP \(statusCode)."
         case .network(let message):
             return "Could not validate API token: \(message)"
         }
     }
 }
 
-private struct APITokenValidationClient {
+struct APITokenValidationClient {
     private let session: URLSession
 
     init(session: URLSession = .shared) {
@@ -668,13 +886,8 @@ private struct APITokenValidationClient {
     func validate(_ token: String, provider: QuotaProviderKind) async throws {
         var request: URLRequest
         switch provider {
-        case .claude:
-            request = URLRequest(url: URL(string: "https://api.anthropic.com/v1/models")!)
-            request.setValue(token, forHTTPHeaderField: "x-api-key")
-            request.setValue("2023-06-01", forHTTPHeaderField: "anthropic-version")
-        case .codex, .chatgpt:
-            request = URLRequest(url: URL(string: "https://api.openai.com/v1/models")!)
-            request.setValue("Bearer \(token)", forHTTPHeaderField: "Authorization")
+        case .codex, .chatgpt, .claude:
+            throw APITokenValidationError.unsupported(provider.displayName)
         case .gemini:
             request = URLRequest(url: URL(string: "https://generativelanguage.googleapis.com/v1beta/models")!)
             request.setValue(token, forHTTPHeaderField: "x-goog-api-key")
@@ -692,9 +905,9 @@ private struct APITokenValidationClient {
             case 200..<300:
                 return
             case 401, 403:
-                throw APITokenValidationError.rejected
+                throw APITokenValidationError.rejected(provider.displayName)
             default:
-                throw APITokenValidationError.server(httpResponse.statusCode)
+                throw APITokenValidationError.server(provider.displayName, httpResponse.statusCode)
             }
         } catch let error as APITokenValidationError {
             throw error
@@ -715,9 +928,139 @@ private enum APITokenPreview {
     }
 }
 
+private struct ProviderSetupTitle: View {
+    var provider: QuotaProviderKind
+
+    var body: some View {
+        HStack(spacing: 10) {
+            ProviderLogoMark(provider: provider, size: 26)
+
+            VStack(alignment: .leading, spacing: 2) {
+                Text("\(provider.displayName) setup")
+                    .font(.system(size: 15, weight: .bold, design: .rounded))
+                Text(setupSubtitle)
+                    .font(.system(size: 10.5, weight: .semibold, design: .rounded))
+                    .foregroundStyle(Color(hex: provider.brandColorHex))
+            }
+
+            Spacer()
+        }
+    }
+
+    private var setupSubtitle: String {
+        switch provider {
+        case .codex:
+            return "Live agentic limits"
+        case .chatgpt:
+            return "Chat usage dashboard"
+        case .claude:
+            return "Shared Claude + Claude Code limits"
+        case .gemini:
+            return "Google AI project key"
+        }
+    }
+}
+
+private struct ProviderDashboardCard: View {
+    var provider: QuotaProviderKind
+
+    private var accent: Color {
+        Color(hex: provider.brandColorHex)
+    }
+
+    private var dashboardURL: URL {
+        provider.usageURL(for: .login)!
+    }
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 14) {
+            ConnectionStatusRow(
+                icon: provider == .claude ? "sparkles" : "bubble.left.and.bubble.right.fill",
+                title: "Usage stays in \(provider.displayName)",
+                message: dashboardMessage,
+                state: .ready
+            )
+
+            Link(destination: dashboardURL) {
+                HStack(spacing: 8) {
+                    Image(systemName: "arrow.up.forward.app")
+                        .font(.system(size: 12, weight: .bold))
+                    Text("Open \(provider.displayName) usage")
+                        .font(.system(size: 12, weight: .bold, design: .rounded))
+                    Spacer()
+                    Image(systemName: "arrow.up.right")
+                        .font(.system(size: 10, weight: .bold))
+                        .opacity(0.72)
+                }
+                .foregroundStyle(.white)
+                .padding(.horizontal, 12)
+                .frame(maxWidth: .infinity)
+                .frame(height: 40)
+                .background(accent, in: RoundedRectangle(cornerRadius: 10, style: .continuous))
+            }
+            .buttonStyle(.plain)
+        }
+        .padding(14)
+        .background(accent.opacity(0.055), in: RoundedRectangle(cornerRadius: 13, style: .continuous))
+        .overlay(alignment: .leading) {
+            Capsule()
+                .fill(accent)
+                .frame(width: 3)
+                .padding(.vertical, 12)
+        }
+        .overlay {
+            RoundedRectangle(cornerRadius: 13, style: .continuous)
+                .stroke(accent.opacity(0.14), lineWidth: 1)
+        }
+    }
+
+    private var dashboardMessage: String {
+        switch provider {
+        case .chatgpt:
+            return "ChatGPT does not expose ordinary chat limits to Brim. Codex usage remains separate."
+        case .claude:
+            return "Claude shows the five-hour and weekly limits shared by Claude and Claude Code."
+        case .codex, .gemini:
+            return "Open the provider dashboard to verify usage."
+        }
+    }
+}
+
+private struct UnsupportedConnectionCard: View {
+    var provider: QuotaProviderKind
+    var switchAction: () -> Void
+
+    private var supportedConnectionTitle: String {
+        provider.supportedConnectionKind.title
+    }
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 14) {
+            ConnectionStatusRow(
+                icon: "exclamationmark.triangle.fill",
+                title: "Connection method retired",
+                message: provider.supportedConnectionKind == .login
+                    ? "API keys cannot read \(provider.displayName) plan usage. This account must use Login."
+                    : "\(provider.displayName) accounts connect with an API key, not Login.",
+                state: .needsAttention
+            )
+
+            ConnectionActionButton(
+                title: "Switch to \(supportedConnectionTitle)",
+                icon: "arrow.triangle.2.circlepath",
+                isEnabled: true,
+                role: .primary,
+                action: switchAction
+            )
+        }
+        .padding(14)
+        .background(Color.primary.opacity(0.022), in: RoundedRectangle(cornerRadius: 13, style: .continuous))
+    }
+}
+
 private struct APITokenConnectionCard: View {
     @Binding var token: String
-    var provider: QuotaProviderKind = .codex
+    var provider: QuotaProviderKind
     var savedTokenPreview: String?
     var validationMessage: String?
     var statusMessage: String
@@ -745,7 +1088,7 @@ private struct APITokenConnectionCard: View {
         VStack(alignment: .leading, spacing: 14) {
             ConnectionStatusRow(
                 icon: "key.horizontal",
-                title: hasSavedToken ? "API token saved" : "Use an API token",
+                title: hasSavedToken ? "Gemini project connected" : "Connect a Gemini project",
                 message: statusMessage,
                 state: statusKind
             )
@@ -810,7 +1153,13 @@ private struct APITokenConnectionCard: View {
             }
         }
         .padding(14)
-        .background(Color.primary.opacity(0.022), in: RoundedRectangle(cornerRadius: 13, style: .continuous))
+        .background(Color(hex: provider.brandColorHex).opacity(0.05), in: RoundedRectangle(cornerRadius: 13, style: .continuous))
+        .overlay(alignment: .leading) {
+            Capsule()
+                .fill(Color(hex: provider.brandColorHex))
+                .frame(width: 3)
+                .padding(.vertical, 12)
+        }
     }
 }
 
@@ -887,7 +1236,18 @@ private struct ConnectionActionButton: View {
     var icon: String
     var isEnabled: Bool
     var role: ConnectionActionRole
+    var tint: Color = .primary
+    var expands = true
     var action: () -> Void
+
+    private var backgroundColor: Color {
+        switch role {
+        case .primary:
+            return tint.opacity(0.88)
+        case .destructive:
+            return role.backgroundColor
+        }
+    }
 
     var body: some View {
         Button(action: action) {
@@ -896,15 +1256,16 @@ private struct ConnectionActionButton: View {
                     .font(.system(size: 12, weight: .bold))
 
                 Text(title)
-                    .font(.system(size: 12, weight: .bold, design: .rounded))
+                    .font(.system(size: 11.5, weight: .bold, design: .rounded))
                     .lineLimit(1)
             }
             .foregroundStyle(role.foregroundColor.opacity(isEnabled ? 1 : 0.48))
-            .frame(maxWidth: .infinity)
-            .frame(height: 38)
-            .background(role.backgroundColor.opacity(isEnabled ? 1 : 0.48), in: RoundedRectangle(cornerRadius: 10, style: .continuous))
+            .padding(.horizontal, expands ? 10 : 15)
+            .frame(minWidth: expands ? 0 : 108, maxWidth: expands ? .infinity : nil)
+            .frame(height: 35)
+            .background(backgroundColor.opacity(isEnabled ? 1 : 0.48), in: RoundedRectangle(cornerRadius: 9, style: .continuous))
             .overlay {
-                RoundedRectangle(cornerRadius: 10, style: .continuous)
+                RoundedRectangle(cornerRadius: 9, style: .continuous)
                     .stroke(role.strokeColor, lineWidth: 1)
             }
         }
@@ -959,37 +1320,6 @@ private struct ConnectionStatusRow: View {
                     .fixedSize(horizontal: false, vertical: true)
             }
         }
-    }
-}
-
-private struct ConnectionMethodButton: View {
-    var title: String
-    var icon: String
-    var isSelected: Bool
-    var action: () -> Void
-
-    var body: some View {
-        Button(action: action) {
-            HStack(spacing: 8) {
-                Image(systemName: icon)
-                    .font(.system(size: 13, weight: .semibold))
-                Text(title)
-                    .font(.system(size: 12, weight: .bold, design: .rounded))
-                    .lineLimit(1)
-            }
-            .frame(maxWidth: .infinity)
-            .padding(.vertical, 10)
-            .foregroundStyle(isSelected ? Color.primary.opacity(0.78) : Color.secondary.opacity(0.82))
-            .background(
-                isSelected ? Color(nsColor: .textBackgroundColor).opacity(0.98) : Color.clear,
-                in: RoundedRectangle(cornerRadius: 10, style: .continuous)
-            )
-            .overlay {
-                RoundedRectangle(cornerRadius: 10, style: .continuous)
-                    .stroke(isSelected ? Color.primary.opacity(0.045) : Color.clear, lineWidth: 1)
-            }
-        }
-        .buttonStyle(.plain)
     }
 }
 

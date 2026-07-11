@@ -15,17 +15,47 @@ public enum QuotaProviderKind: String, Codable, Hashable, CaseIterable {
         }
     }
 
-    public var usageURL: URL? {
-        switch self {
-        case .codex:
+    public func usageURL(for connectionKind: QuotaConnectionKind) -> URL? {
+        switch (self, connectionKind) {
+        case (.codex, .login):
             return URL(string: "https://chatgpt.com/codex/cloud/settings/analytics#usage")
-        case .chatgpt:
+        case (.chatgpt, .login):
             return URL(string: "https://chatgpt.com/#settings/Subscription")
-        case .claude:
+        case (.claude, .login):
             return URL(string: "https://claude.ai/settings/usage")
-        case .gemini:
+        case (.claude, .apiToken):
+            return URL(string: "https://platform.claude.com/usage")
+        case (.gemini, .apiToken):
             return URL(string: "https://aistudio.google.com/usage")
+        case (_, .manual), (.codex, .apiToken), (.chatgpt, .apiToken), (.gemini, .login):
+            return nil
         }
+    }
+
+    public var supportedConnectionKind: QuotaConnectionKind {
+        switch self {
+        case .codex, .chatgpt, .claude:
+            return .login
+        case .gemini:
+            return .apiToken
+        }
+    }
+
+    public func supports(_ connectionKind: QuotaConnectionKind) -> Bool {
+        connectionKind == .manual || connectionKind == supportedConnectionKind
+    }
+
+    public var usesProviderDashboard: Bool {
+        switch self {
+        case .chatgpt, .claude:
+            return true
+        case .codex, .gemini:
+            return false
+        }
+    }
+
+    public var performsAutomaticRefresh: Bool {
+        self == .codex
     }
 
     public var logoAssetName: String? {
@@ -64,14 +94,6 @@ public enum QuotaProviderKind: String, Codable, Hashable, CaseIterable {
         }
     }
 
-    /// Prefix an API key for this provider must carry.
-    public var apiKeyPrefix: String {
-        switch self {
-        case .codex, .chatgpt: return "sk-"
-        case .claude: return "sk-ant-"
-        case .gemini: return "AIza"
-        }
-    }
 }
 
 public enum QuotaConnectionKind: Hashable {
@@ -126,6 +148,7 @@ public enum QuotaRefreshStatus: String, Codable, Hashable {
     case waitingForQuotaSource
     case refreshFailed
     case manual
+    case dashboardOnly
 
     public var title: String {
         switch self {
@@ -134,6 +157,7 @@ public enum QuotaRefreshStatus: String, Codable, Hashable {
         case .waitingForQuotaSource: return "Checking"
         case .refreshFailed: return "Refresh failed"
         case .manual: return "Manual values"
+        case .dashboardOnly: return "Dashboard"
         }
     }
 
@@ -141,7 +165,7 @@ public enum QuotaRefreshStatus: String, Codable, Hashable {
         switch self {
         case .notConnected, .refreshFailed:
             return true
-        case .ready, .waitingForQuotaSource, .manual:
+        case .ready, .waitingForQuotaSource, .manual, .dashboardOnly:
             return false
         }
     }
@@ -153,6 +177,7 @@ public enum QuotaSignalState: Hashable {
     case waitingForQuotaSource
     case refreshFailed
     case manual
+    case dashboardOnly
     case exhausted
 
     public var title: String {
@@ -162,6 +187,7 @@ public enum QuotaSignalState: Hashable {
         case .waitingForQuotaSource: return "Checking"
         case .refreshFailed: return "Refresh failed"
         case .manual: return "Manual values"
+        case .dashboardOnly: return "Dashboard"
         case .exhausted: return "Exhausted"
         }
     }
@@ -405,6 +431,8 @@ public struct QuotaAccount: Codable, Hashable, Identifiable {
             return .refreshFailed
         case .manual:
             return .manual
+        case .dashboardOnly:
+            return .dashboardOnly
         }
     }
 
@@ -421,7 +449,7 @@ public struct QuotaAccount: Codable, Hashable, Identifiable {
     }
 
     public var resolvedProviderProfilePath: String {
-        providerProfilePath ?? QuotaAccountDefaults.defaultProfilePath(for: name, provider: provider)
+        providerProfilePath ?? QuotaAccountDefaults.defaultProfilePath(for: id, provider: provider)
     }
 
     public var copyableAccountIdentifier: String {
@@ -450,14 +478,6 @@ public struct QuotaAccount: Codable, Hashable, Identifiable {
         name
     }
 
-    public func widgetSnapshotAccount() -> QuotaAccount {
-        var account = clearingPrivateProviderFields(keepProfilePath: false)
-        account.lastRefreshAttemptAt = nil
-        account.lastSuccessfulRefreshAt = nil
-        account.refreshMessage = nil
-        return account.normalizedForStorage()
-    }
-
     public func portableExportAccount() -> QuotaAccount {
         var account = clearingPortableFields()
         account.refreshMessage = nil
@@ -473,8 +493,10 @@ public struct QuotaAccount: Codable, Hashable, Identifiable {
             account.refreshMessage = "Add this device's API token to reconnect."
             account.lastSuccessfulRefreshAt = nil
         case .login:
-            account.refreshStatus = .notConnected
-            account.refreshMessage = "Sign in with \(account.provider.displayName) on this device to reconnect."
+            account.refreshStatus = account.provider.usesProviderDashboard ? .dashboardOnly : .notConnected
+            account.refreshMessage = account.provider.usesProviderDashboard
+                ? "Usage stays in \(account.provider.displayName). Open its dashboard to verify it."
+                : "Sign in with \(account.provider.displayName) on this device to reconnect."
             account.lastSuccessfulRefreshAt = nil
         case .manual:
             account.refreshStatus = .manual

@@ -10,7 +10,6 @@ public enum QuotaAccountDefaults {
     public static let maximumWeeklyLimitMinutes = 3000
     public static let maximumSessionLimitMinutes = 1200
     public static let limitStepMinutes = 15
-    public static let mediumWidgetSlotCount = 4
     public static let presetColorHexes = [
         "#22C55E", "#06B6D4", "#3B82F6", "#8B5CF6",
         "#EC4899", "#EF4444", "#F59E0B", "#14B8A6",
@@ -18,14 +17,8 @@ public enum QuotaAccountDefaults {
     ]
     public static let palette = presetColorHexes
 
-    public static func defaultProfilePath(for name: String, provider: QuotaProviderKind) -> String {
-        let slug = name
-            .lowercased()
-            .components(separatedBy: CharacterSet.alphanumerics.inverted)
-            .filter { !$0.isEmpty }
-            .joined(separator: "-")
-
-        return "$APP_SUPPORT/Profiles/\(provider.rawValue)/\(slug.isEmpty ? "account" : slug)"
+    public static func defaultProfilePath(for accountID: UUID, provider: QuotaProviderKind) -> String {
+        "$APP_SUPPORT/Profiles/\(provider.rawValue)/\(accountID.uuidString.lowercased())"
     }
 
     public static func newAccount(
@@ -35,8 +28,10 @@ public enum QuotaAccountDefaults {
         existingColorHexes: [String] = []
     ) -> QuotaAccount {
         let displayIndex = max(1, index)
+        let accountID = UUID()
         let name = "Account \(displayIndex)"
         return QuotaAccount(
+            id: accountID,
             provider: provider,
             name: name,
             colorHex: colorHexForNewAccount(existingColorHexes: existingColorHexes),
@@ -47,10 +42,10 @@ public enum QuotaAccountDefaults {
             resetWeekday: resetWeekday,
             resetHour: resetHour,
             resetMinute: resetMinute,
-            providerProfilePath: "$APP_SUPPORT/Profiles/\(provider.rawValue)/account-\(displayIndex)",
+            providerProfilePath: defaultProfilePath(for: accountID, provider: provider),
             connectionKind: connectionKind,
             hasUsageSnapshot: false,
-            refreshStatus: .notConnected
+            refreshStatus: provider.usesProviderDashboard ? .dashboardOnly : .notConnected
         )
     }
 

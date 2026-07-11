@@ -1,59 +1,7 @@
 import AppKit
-import Combine
 import ServiceManagement
 import SwiftUI
 import UniformTypeIdentifiers
-
-enum BrimRefreshInterval: Int, CaseIterable, Identifiable {
-    case oneMinute = 60
-    case fiveMinutes = 300
-    case fifteenMinutes = 900
-    case thirtyMinutes = 1800
-
-    static let storageKey = "brim.refresh-interval-seconds.v1"
-    static let modeStorageKey = "brim.refresh-mode.v1"
-    static let defaultSeconds = BrimRefreshInterval.fiveMinutes.rawValue
-    static let minimumSeconds = 60
-    static let maximumSeconds = 86_400
-
-    var id: Int { rawValue }
-
-    var title: String {
-        switch self {
-        case .oneMinute: return "1 min"
-        case .fiveMinutes: return "5 min"
-        case .fifteenMinutes: return "15 min"
-        case .thirtyMinutes: return "30 min"
-        }
-    }
-
-    var detail: String {
-        switch self {
-        case .oneMinute: return "Most current"
-        case .fiveMinutes: return "Balanced"
-        case .fifteenMinutes: return "Quieter"
-        case .thirtyMinutes: return "Lightest touch"
-        }
-    }
-
-    static func normalizedSeconds(_ seconds: Int) -> Int {
-        min(max(seconds, minimumSeconds), maximumSeconds)
-    }
-
-    static func displayTitle(for seconds: Int) -> String {
-        let normalizedSeconds = normalizedSeconds(seconds)
-        if let preset = BrimRefreshInterval(rawValue: normalizedSeconds) {
-            return preset.title
-        }
-
-        let minutes = max(1, normalizedSeconds / 60)
-        if minutes >= 60, minutes.isMultiple(of: 60) {
-            return "\(minutes / 60) hr"
-        }
-
-        return "\(minutes) min"
-    }
-}
 
 private enum RefreshFrequencyMode: String {
     case preset
@@ -97,18 +45,9 @@ struct AccountSettingsView: View {
     @State private var selectedSettingsTab: BrimSettingsTab = .about
     @State private var resizeDragStartWidth: CGFloat?
     @State private var liveSidebarWidth = SplitLayoutMetrics.defaultSidebarWidth
-    @AppStorage("brim.sidebar-width.v1") private var storedSidebarWidth = SplitLayoutMetrics.defaultSidebarWidth
-    @AppStorage(BrimRefreshInterval.storageKey) private var refreshIntervalSeconds = BrimRefreshInterval.defaultSeconds
+    @AppStorage("brim.sidebar-width.v2") private var storedSidebarWidth = SplitLayoutMetrics.defaultSidebarWidth
 
     var route: AppRoute?
-    private var refreshTimer: Publishers.Autoconnect<Timer.TimerPublisher> {
-        Timer.publish(
-            every: TimeInterval(BrimRefreshInterval.normalizedSeconds(refreshIntervalSeconds)),
-            on: .main,
-            in: .common
-        )
-        .autoconnect()
-    }
 
     private var constrainedSidebarWidth: CGFloat {
         Self.clampedSidebarWidth(liveSidebarWidth)
@@ -145,10 +84,11 @@ struct AccountSettingsView: View {
 
     var body: some View {
         Group {
-            if store.accounts.isEmpty {
+            if store.accounts.isEmpty, !showsSettings {
                 FirstRunOnboardingView(
                     storageStatus: store.storageStatus,
-                    addAccount: addAccount
+                    addAccount: addAccount,
+                    openTransferSettings: openTransferSettings
                 )
             } else {
                 GeometryReader { geometry in
@@ -206,8 +146,6 @@ struct AccountSettingsView: View {
 
                         Group {
                             VStack(spacing: 0) {
-                                StorageStatusBanner(status: store.storageStatus)
-
                                 if showsSettings {
                                     BrimSettingsView(selectedTab: $selectedSettingsTab)
                                 } else if let selectedAccount {
@@ -257,11 +195,6 @@ struct AccountSettingsView: View {
         .onChange(of: route) { _, nextRoute in
             handle(nextRoute)
         }
-        .onReceive(refreshTimer) { _ in
-            Task {
-                await store.refreshConnectedAccounts()
-            }
-        }
         .sheet(isPresented: $showsAddAccountSheet) {
             AddAccountSheet { mode in
                 createAccount(mode: mode)
@@ -300,7 +233,15 @@ struct AccountSettingsView: View {
             return
         }
 
-        CredentialStore.shared.deleteAPIToken(credentialID: store.accounts[safe: index]?.credentialID)
+        let removedAccount = store.accounts[index]
+        let remainingAccounts = store.accounts.filter { $0.id != accountID }
+        do {
+            try LocalAccountSecrets.delete(for: removedAccount, remainingAccounts: remainingAccounts)
+        } catch {
+            presentLocalSecretDeletionError(error, accountName: removedAccount.name)
+            return
+        }
+
         let previousSelectedAccountID = selectedAccountID
         store.removeAccounts(at: IndexSet(integer: index))
 
@@ -317,6 +258,15 @@ struct AccountSettingsView: View {
         store.selectAccount(id: selectedAccountID)
     }
 
+    private func presentLocalSecretDeletionError(_ error: Error, accountName: String) {
+        let alert = NSAlert()
+        alert.alertStyle = .critical
+        alert.messageText = "Could not delete \(accountName)"
+        alert.informativeText = "Brim kept the account because its local credentials could not be removed. \(error.localizedDescription)"
+        alert.addButton(withTitle: "OK")
+        alert.runModal()
+    }
+
     private func moveAccounts(fromOffsets source: IndexSet, toOffset destination: Int) {
         store.moveAccounts(fromOffsets: source, toOffset: destination)
     }
@@ -328,6 +278,11 @@ struct AccountSettingsView: View {
     }
 
     private func openSettings() {
+        showsSettings = true
+    }
+
+    private func openTransferSettings() {
+        selectedSettingsTab = .transfer
         showsSettings = true
     }
 
@@ -357,6 +312,9 @@ struct AccountSettingsView: View {
                 store.selectAccount(id: resolvedID)
             }
             showsSettings = false
+        case .menuBarSettings:
+            selectedSettingsTab = .menuBar
+            showsSettings = true
         case nil:
             break
         }
@@ -377,9 +335,9 @@ struct AccountSettingsView: View {
 }
 
 private enum SplitLayoutMetrics {
-    static let defaultSidebarWidth: CGFloat = 218
+    static let defaultSidebarWidth: CGFloat = 312
     static let minSidebarWidth: CGFloat = 206
-    static let maxSidebarWidth: CGFloat = 312
+    static let maxSidebarWidth: CGFloat = 340
     static let handleWidth: CGFloat = 9
 }
 
@@ -412,63 +370,19 @@ private struct SplitResizeHandle: View {
     }
 }
 
-private struct StorageStatusBanner: View {
-    var status: QuotaStorageStatus
-
-    var body: some View {
-        if let message {
-            HStack(spacing: 8) {
-                Image(systemName: icon)
-                Text(message)
-                    .lineLimit(2)
-                Spacer()
-            }
-            .font(.system(size: 12, weight: .medium, design: .rounded))
-            .foregroundStyle(.secondary)
-            .padding(.horizontal, 18)
-            .padding(.vertical, 9)
-            .background(.thinMaterial)
-        }
-    }
-
-    private var icon: String {
-        switch status {
-        case .corrupted, .saveFailed, .unavailable:
-            return "exclamationmark.triangle"
-        case .firstRun:
-            return "sparkles"
-        case .ready:
-            return ""
-        }
-    }
-
-    private var message: String? {
-        switch status {
-        case .ready:
-            return nil
-        case .firstRun:
-            return "Add your first account to start tracking usage."
-        case .corrupted:
-            return "Saved account data could not be read, so Brim preserved the broken payload and loaded examples."
-        case .saveFailed:
-            return "Brim could not save the latest account changes."
-        case .unavailable:
-            return "Shared widget storage is unavailable."
-        }
-    }
-}
-
 private enum BrimSettingsTab: CaseIterable, Hashable {
     case about
     case personalization
+    case menuBar
     case transfer
     case privacy
 
     var title: String {
         switch self {
         case .privacy: return "Privacy"
-        case .transfer: return "Import / Export"
+        case .transfer: return "Sync"
         case .personalization: return "Personalize"
+        case .menuBar: return "Menu bar"
         case .about: return "About"
         }
     }
@@ -478,6 +392,7 @@ private enum BrimSettingsTab: CaseIterable, Hashable {
         case .privacy: return "lock.shield"
         case .transfer: return "arrow.up.arrow.down"
         case .personalization: return "slider.horizontal.3"
+        case .menuBar: return "menubar.rectangle"
         case .about: return "sparkle.magnifyingglass"
         }
     }
@@ -521,25 +436,37 @@ private struct BrimSettingsView: View {
 
             SettingsTabRail(selectedTab: $selectedTab)
 
-            Group {
-                switch selectedTab {
-                case .privacy:
-                    PrivacySettingsTab()
-                case .transfer:
-                    TransferSettingsTab(
-                        accountCount: store.accounts.count,
-                        notice: transferNotice,
-                        exportAccounts: exportAccounts,
-                        importAccounts: importAccounts
+            GeometryReader { viewport in
+                ScrollView(.vertical) {
+                    Group {
+                        switch selectedTab {
+                        case .privacy:
+                            PrivacySettingsTab()
+                        case .transfer:
+                            TransferSettingsTab(
+                                accountCount: store.accounts.count,
+                                notice: transferNotice,
+                                exportAccounts: exportAccounts,
+                                importAccounts: importAccounts
+                            )
+                        case .personalization:
+                            PersonalizationSettingsTab()
+                        case .menuBar:
+                            MenuBarSettingsTab()
+                        case .about:
+                            AboutSettingsTab(openGitHub: openGitHub)
+                        }
+                    }
+                    .frame(
+                        maxWidth: .infinity,
+                        minHeight: viewport.size.height,
+                        alignment: .topLeading
                     )
-                case .personalization:
-                    PersonalizationSettingsTab()
-                case .about:
-                    AboutSettingsTab(openGitHub: openGitHub)
+                    .transition(.opacity.combined(with: .scale(scale: 0.985, anchor: .top)))
                 }
+                .scrollBounceBehavior(.basedOnSize)
             }
             .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
-            .transition(.opacity.combined(with: .scale(scale: 0.985, anchor: .top)))
         }
         .padding(28)
         .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
@@ -585,7 +512,8 @@ private struct BrimSettingsView: View {
 
         do {
             let didAccess = url.startAccessingSecurityScopedResource()
-            let previousCredentialIDs = store.accounts.compactMap(\.credentialID)
+            let accountsBeingReplaced = store.accounts
+            let previousCredentialCount = accountsBeingReplaced.compactMap(\.credentialID).count
             defer {
                 if didAccess {
                     url.stopAccessingSecurityScopedResource()
@@ -593,13 +521,24 @@ private struct BrimSettingsView: View {
             }
             let data = try Data(contentsOf: url)
             let preview = try QuotaAccountsTransferPayload.importPreview(from: data)
-            guard confirmImport(credentialCount: previousCredentialIDs.count, preview: preview) else {
+            guard confirmImport(credentialCount: previousCredentialCount, preview: preview) else {
                 return
             }
 
             try store.importAccountsData(data)
-            previousCredentialIDs.forEach { CredentialStore.shared.deleteAPIToken(credentialID: $0) }
-            transferNotice = .success("Imported \(store.accounts.count) account\(store.accounts.count == 1 ? "" : "s"). Reconnect secrets on this device.")
+            let cleanupFailures = LocalAccountSecrets.deleteAllBestEffort(for: accountsBeingReplaced)
+            if cleanupFailures.isEmpty {
+                transferNotice = .success("Imported \(store.accounts.count) account\(store.accounts.count == 1 ? "" : "s"). Reconnect secrets on this device.")
+            } else {
+                let failedAccountNames = cleanupFailures.map(\.accountName).joined(separator: ", ")
+                transferNotice = .failure(
+                    "Accounts were imported, but Brim could not remove local credentials for: \(failedAccountNames)."
+                )
+            }
+        } catch let error as QuotaStoreError {
+            transferNotice = .failure(error.localizedDescription)
+        } catch let error as QuotaAccountsTransferError {
+            transferNotice = .failure(error.localizedDescription)
         } catch {
             transferNotice = .failure("That file is not a Brim accounts export.")
         }
@@ -610,7 +549,7 @@ private struct BrimSettingsView: View {
         let accountText = "\(store.accounts.count) account\(store.accounts.count == 1 ? "" : "s")"
         let credentialText = credentialCount == 0
             ? ""
-            : " Local API tokens for the replaced accounts will be removed from Keychain."
+            : " Local API tokens for the replaced accounts will be removed from private credential storage."
         alert.alertStyle = .warning
         alert.messageText = "Replace current accounts?"
         alert.informativeText = "This import contains \(preview.accountCount) account\(preview.accountCount == 1 ? "" : "s"). It will replace the \(accountText) currently in Brim.\(credentialText)"
@@ -1026,10 +965,10 @@ private struct PrivacySettingsTab: View {
 
             ScrollView {
                 VStack(spacing: 10) {
-                    PrivacyLine(icon: "key.horizontal", title: "Tokens stay in Keychain", detail: "API tokens and credentials are stored in the macOS Keychain on this Mac only. Brim does not transmit, copy, or upload them, and they are never written into widget snapshots or exports.")
-                    PrivacyLine(icon: "square.stack.3d.up", title: "Widgets receive snapshots", detail: "The widget receives only account names, colors, quota numbers, and display state. It never receives tokens, emails, account identifiers, or file paths.")
+                    PrivacyLine(icon: "key.horizontal", title: "Credentials stay local", detail: "API keys use private local credential storage (Keychain in signed builds). OAuth login credentials use private, account-specific Brim profile files. Neither is written into exports.")
+                    PrivacyLine(icon: "menubar.rectangle", title: "Menu-bar data stays local", detail: "The menu bar reads the same in-memory account state as Brim. It does not create a second snapshot, share data with another process, or receive credentials.")
                     PrivacyLine(icon: "arrow.up.doc", title: "Exports skip secrets", detail: "JSON exports contain account names, colors, and modes only. Emails, profile paths, tokens, and live usage never leave this Mac. You are responsible for any file you choose to export and share.")
-                    PrivacyLine(icon: "chart.bar.xaxis", title: "No analytics", detail: "Brim contains no tracking, analytics, telemetry, or remote reporting of any kind. The only network requests Brim makes are directly from your Mac to the provider APIs you connect (for example OpenAI or Anthropic), using your own credentials, solely to read usage and rate-limit data.")
+                    PrivacyLine(icon: "chart.bar.xaxis", title: "No analytics", detail: "Brim contains no tracking, telemetry, or remote reporting. Authenticated requests go only to Codex for live usage or Google to validate a Gemini project key. ChatGPT and Claude credentials never enter Brim; their usage links open in your browser.")
                     PrivacyLine(icon: "building.2", title: "Third-party services", detail: "Brim is an independent open-source project. It is not affiliated with, endorsed by, or sponsored by OpenAI, Anthropic, or any other provider. Product names and logos are trademarks of their respective owners and are used for identification only. Your use of connected services remains governed by each provider's own terms; you are responsible for ensuring your use complies with them.")
                     PrivacyLine(icon: "exclamationmark.shield", title: "No warranty", detail: "Brim is provided \"as is\" and \"as available\", without warranty of any kind, express or implied, including merchantability, fitness for a particular purpose, accuracy, and non-infringement. Displayed quota and rate-limit figures are estimates derived from provider responses and may be incomplete, delayed, or wrong — do not rely on them for billing, compliance, or any decision with financial consequences.")
                     PrivacyLine(icon: "scalemass", title: "Limitation of liability", detail: "To the maximum extent permitted by law, the authors and contributors of Brim shall not be liable for any direct, indirect, incidental, special, consequential, or exemplary damages — including lost profits, data loss, account suspension, or provider charges — arising from the use of, or inability to use, this software, even if advised of the possibility of such damages. Your sole and exclusive remedy is to stop using the software.")
@@ -1083,7 +1022,7 @@ private struct TransferSettingsTab: View {
         VStack(alignment: .leading, spacing: 0) {
             SettingsPanelHeader(
                 icon: "arrow.up.arrow.down",
-                title: "Move accounts",
+                title: "Sync",
                 subtitle: "Carry Brim account setup between Macs with a JSON file."
             )
 
@@ -1230,168 +1169,7 @@ private struct TransferNote: View {
     }
 }
 
-private struct AboutSettingsTab: View {
-    var openGitHub: () -> Void
-
-    var body: some View {
-        VStack {
-            Spacer(minLength: 0)
-
-            HStack(alignment: .center, spacing: 26) {
-                AboutLogoOrbit()
-
-                VStack(alignment: .leading, spacing: 14) {
-                    VStack(alignment: .leading, spacing: 7) {
-                        HStack(alignment: .top, spacing: 8) {
-                            Text("Brim")
-                                .font(.system(size: 46, weight: .black, design: .rounded))
-                                .lineLimit(1)
-
-                            BrimVersionBadge()
-                                .padding(.top, 8)
-                        }
-
-                        Text("A tiny quota instrument for people who like calm tools.")
-                            .font(.system(size: 14, weight: .semibold, design: .rounded))
-                            .foregroundStyle(.secondary)
-                            .fixedSize(horizontal: false, vertical: true)
-                    }
-
-                    GitHubStarButton(action: openGitHub)
-
-                    AboutTrustConstellation()
-                }
-                .frame(width: 330, alignment: .leading)
-            }
-            .frame(maxWidth: 620, alignment: .center)
-
-            Spacer(minLength: 0)
-        }
-        .frame(maxWidth: .infinity, maxHeight: .infinity)
-        .panelStyle()
-    }
-}
-
-private struct AboutLogoOrbit: View {
-    var body: some View {
-        ZStack {
-            ForEach(0..<3, id: \.self) { index in
-                Circle()
-                    .stroke(
-                        Color(hex: index == 1 ? "#54C7EC" : "#2CCB68")
-                            .opacity(0.090 - Double(index) * 0.018),
-                        lineWidth: 1
-                    )
-                    .frame(
-                        width: 164 + CGFloat(index * 44),
-                        height: 164 + CGFloat(index * 44)
-                    )
-            }
-
-            BrimLogoMark(size: 116)
-                .shadow(color: Color(hex: "#2CCB68").opacity(0.22), radius: 32, y: 14)
-
-            Circle()
-                .fill(Color(hex: "#2CCB68").opacity(0.80))
-                .frame(width: 8, height: 8)
-                .offset(x: 88, y: -62)
-                .shadow(color: Color(hex: "#2CCB68").opacity(0.24), radius: 9, y: 2)
-
-            Circle()
-                .fill(Color(hex: "#54C7EC").opacity(0.76))
-                .frame(width: 6, height: 6)
-                .offset(x: -96, y: 48)
-                .shadow(color: Color(hex: "#54C7EC").opacity(0.20), radius: 8, y: 2)
-        }
-        .frame(width: 246, height: 246)
-    }
-}
-
-private struct AboutTrustConstellation: View {
-    var body: some View {
-        VStack(alignment: .leading, spacing: 9) {
-            HStack(spacing: 8) {
-                AboutTrustChip(icon: "lock.fill", title: "Keychain")
-                AboutTrustChip(icon: "macwindow", title: "Snapshots")
-                AboutTrustChip(icon: "shippingbox", title: "No secrets")
-            }
-
-            Text("Tokens stay in Keychain. Widgets and exports receive snapshots only.")
-                .font(.system(size: 11, weight: .medium, design: .rounded))
-                .foregroundStyle(.secondary)
-                .fixedSize(horizontal: false, vertical: true)
-        }
-        .padding(.top, 3)
-    }
-}
-
-private struct AboutTrustChip: View {
-    var icon: String
-    var title: String
-
-    var body: some View {
-        HStack(spacing: 7) {
-            Image(systemName: icon)
-                .font(.system(size: 11, weight: .semibold))
-                .foregroundStyle(Color(hex: "#2CCB68"))
-
-            Text(title)
-                .font(.system(size: 11, weight: .bold, design: .rounded))
-                .foregroundStyle(Color.primary.opacity(0.62))
-                .lineLimit(1)
-        }
-        .padding(.horizontal, 10)
-        .frame(height: 28)
-        .background(.ultraThinMaterial, in: Capsule())
-        .background(Color.white.opacity(0.40), in: Capsule())
-        .overlay {
-            Capsule()
-                .stroke(Color(hex: "#2CCB68").opacity(0.13), lineWidth: 1)
-        }
-        .shadow(color: Color(hex: "#2CCB68").opacity(0.055), radius: 10, y: 4)
-    }
-}
-
-private struct GitHubStarButton: View {
-    var action: () -> Void
-
-    var body: some View {
-        Button(action: action) {
-            HStack(spacing: 0) {
-                HStack(spacing: 7) {
-                    Image(systemName: "star.fill")
-                        .font(.system(size: 12, weight: .bold))
-                        .foregroundStyle(Color(hex: "#24292F"))
-
-                    Text("Star")
-                        .font(.system(size: 13, weight: .bold, design: .rounded))
-                        .foregroundStyle(Color(hex: "#24292F"))
-                }
-                .padding(.horizontal, 12)
-                .frame(height: 34)
-
-                Rectangle()
-                    .fill(Color(hex: "#D0D7DE"))
-                    .frame(width: 1, height: 34)
-
-                Text("shayanshirazi/Brim")
-                    .font(.system(size: 12, weight: .semibold, design: .monospaced))
-                    .foregroundStyle(Color(hex: "#57606A"))
-                    .padding(.horizontal, 12)
-                    .frame(height: 34)
-            }
-            .background(Color(hex: "#F6F8FA"), in: RoundedRectangle(cornerRadius: 7, style: .continuous))
-            .overlay {
-                RoundedRectangle(cornerRadius: 7, style: .continuous)
-                    .stroke(Color(hex: "#D0D7DE"), lineWidth: 1)
-            }
-        }
-        .buttonStyle(.plain)
-        .help("Open Brim on GitHub")
-    }
-}
-
-private struct SettingsPanelHeader: View {
+struct SettingsPanelHeader: View {
     var icon: String
     var title: String
     var subtitle: String

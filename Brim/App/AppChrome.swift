@@ -109,10 +109,10 @@ struct EmptyAccountsView: View {
 }
 
 extension View {
-    func panelStyle() -> some View {
+    func panelStyle(insets: CGFloat = 18) -> some View {
         self
             .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
-            .padding(18)
+            .padding(insets)
             .background(.regularMaterial, in: RoundedRectangle(cornerRadius: 16, style: .continuous))
             .overlay {
                 RoundedRectangle(cornerRadius: 16, style: .continuous)

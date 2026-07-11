@@ -2,6 +2,79 @@ import XCTest
 @testable import Brim
 
 final class QuotaTransferTests: XCTestCase {
+    func testMenuBarSettingsRouteRoundTrips() throws {
+        let url = try XCTUnwrap(URL(string: AppRoute.menuBarSettings.urlString))
+
+        XCTAssertEqual(AppRoute.parse(url), .menuBarSettings)
+        XCTAssertEqual(
+            AppRoute.parse(try XCTUnwrap(URL(string: "brim://settings/widget"))),
+            .menuBarSettings
+        )
+    }
+
+    func testMenuBarPreferencesFilterSortAndLimitAccounts() {
+        var healthy = QuotaAccountDefaults.newAccount(index: 1)
+        healthy.name = "Healthy"
+        healthy.hasUsageSnapshot = true
+        healthy.sessionUsedPercent = 10
+        healthy.refreshStatus = .ready
+
+        var urgent = QuotaAccountDefaults.newAccount(index: 2)
+        urgent.name = "Urgent"
+        urgent.hasUsageSnapshot = true
+        urgent.sessionUsedPercent = 90
+        urgent.refreshStatus = .ready
+
+        var disconnected = QuotaAccountDefaults.newAccount(index: 3)
+        disconnected.name = "Disconnected"
+        disconnected.refreshStatus = .notConnected
+
+        let preferences = MenuBarPreferences(
+            accountOrder: .lowestRemaining,
+            hiddenAccountIDs: [healthy.id],
+            includesDisconnected: false,
+            maximumRows: 1
+        )
+
+        XCTAssertEqual(
+            preferences.visibleAccounts(from: [healthy, disconnected, urgent]).map(\.id),
+            [urgent.id]
+        )
+    }
+
+    func testStoredDashboardProviderDropsStaleQuotaAndPrivateConnectionFields() {
+        var account = QuotaAccount(
+            provider: .chatgpt,
+            providerAccountID: "workspace-from-old-build",
+            name: "ChatGPT",
+            accountEmail: "owner@example.com",
+            colorHex: "#10A37F",
+            weeklyLimitMinutes: 600,
+            usedMinutes: 300,
+            weeklyUsedPercent: 50,
+            sessionUsedPercent: 25,
+            resetWeekday: 2,
+            resetHour: 9,
+            resetMinute: 0,
+            providerProfilePath: "$APP_SUPPORT/Profiles/chatgpt/old-profile",
+            connectionKind: .login,
+            hasUsageSnapshot: true,
+            refreshStatus: .ready,
+            credentialID: "old-credential"
+        )
+
+        account = account.normalizedForStorage()
+
+        XCTAssertEqual(account.refreshStatus, .dashboardOnly)
+        XCTAssertFalse(account.hasUsageSnapshot)
+        XCTAssertNil(account.weeklyUsedPercent)
+        XCTAssertNil(account.sessionUsedPercent)
+        XCTAssertNil(account.providerAccountID)
+        XCTAssertNil(account.accountEmail)
+        XCTAssertNil(account.providerProfilePath)
+        XCTAssertNil(account.credentialID)
+    }
+
     override func tearDown() {
         URLProtocolMock.requestHandler = nil
         super.tearDown()
@@ -35,9 +108,7 @@ final class QuotaTransferTests: XCTestCase {
         let payload = QuotaAccountsTransferPayload(
             exportedAt: Date(timeIntervalSince1970: 200),
             accounts: [account],
-            selectedAccountID: account.id,
-            isAccountTextHidden: true,
-            widgetPageIndex: 3
+            selectedAccountID: account.id
         )
         let encoder = JSONEncoder()
         encoder.dateEncodingStrategy = .iso8601
@@ -59,8 +130,6 @@ final class QuotaTransferTests: XCTestCase {
         XCTAssertNil(imported.accounts[0].sessionUsedPercent)
         XCTAssertEqual(imported.accounts[0].refreshMessage, "Add this device's API token to reconnect.")
         XCTAssertEqual(imported.selectedAccountID, account.id)
-        XCTAssertEqual(imported.widgetPageIndex, 0)
-        XCTAssertTrue(imported.isAccountTextHidden)
     }
 
     func testExportScrubsPersonalLiveStateFromConnectedAccounts() throws {
@@ -92,9 +161,7 @@ final class QuotaTransferTests: XCTestCase {
         let payload = QuotaAccountsTransferPayload(
             exportedAt: Date(timeIntervalSince1970: 200),
             accounts: [account],
-            selectedAccountID: account.id,
-            isAccountTextHidden: false,
-            widgetPageIndex: 0
+            selectedAccountID: account.id
         )
 
         let exported = try XCTUnwrap(payload.accounts.first)
@@ -114,52 +181,27 @@ final class QuotaTransferTests: XCTestCase {
         XCTAssertNil(exported.sessionUsedPercent)
     }
 
-    func testWidgetSnapshotScrubsPrivateProviderFields() throws {
-        let account = QuotaAccount(
-            id: UUID(uuidString: "11111111-1111-1111-1111-111111111111")!,
-            providerAccountID: "remote-id",
-            name: "Widget",
-            accountEmail: "user@example.com",
-            colorHex: "#2CCB68",
-            weeklyLimitMinutes: 300,
-            usedMinutes: 20,
-            sessionLimitMinutes: 300,
-            sessionUsedMinutes: 40,
-            resetWeekday: 2,
-            resetHour: 9,
-            resetMinute: 30,
-            providerProfilePath: "$HOME/.codex-accounts/old-machine",
-            connectionKind: .login,
-            hasUsageSnapshot: true,
-            refreshStatus: .ready,
-            refreshMessage: "Loaded live usage.",
-            credentialID: "keychain-secret"
-        )
-        let snapshotURL = URL(fileURLWithPath: NSTemporaryDirectory(), isDirectory: true)
-            .appendingPathComponent("brim-widget-\(UUID().uuidString)", isDirectory: true)
-            .appendingPathComponent("widget-snapshot.json")
-        let snapshotStore = QuotaWidgetSnapshotStore(repository: nil, fallbackURL: snapshotURL)
-
+    func testProviderUsageURLsMatchEachProviderCapability() throws {
         XCTAssertEqual(
-            snapshotStore.save(
-                QuotaState(accounts: [account], selectedAccountID: account.id)
-            ),
-            .ready
-        )
-
-        let loaded = snapshotStore.load().state.accounts[0]
-        XCTAssertEqual(loaded.name, "Widget")
-        XCTAssertNil(loaded.providerAccountID)
-        XCTAssertNil(loaded.accountEmail)
-        XCTAssertNil(loaded.providerProfilePath)
-        XCTAssertNil(loaded.credentialID)
-        XCTAssertNil(loaded.refreshMessage)
-    }
-
-    func testProviderUsageURLPointsAtCodexAnalyticsUsagePage() throws {
-        XCTAssertEqual(
-            QuotaProviderKind.codex.usageURL?.absoluteString,
+            QuotaProviderKind.codex.usageURL(for: .login)?.absoluteString,
             "https://chatgpt.com/codex/cloud/settings/analytics#usage"
+        )
+        XCTAssertNil(QuotaProviderKind.codex.usageURL(for: .apiToken))
+        XCTAssertTrue(QuotaProviderKind.codex.supports(.login))
+        XCTAssertFalse(QuotaProviderKind.codex.supports(.apiToken))
+        XCTAssertEqual(
+            QuotaProviderKind.chatgpt.usageURL(for: .login)?.absoluteString,
+            "https://chatgpt.com/#settings/Subscription"
+        )
+        XCTAssertEqual(
+            QuotaProviderKind.claude.usageURL(for: .login)?.absoluteString,
+            "https://claude.ai/settings/usage"
+        )
+        XCTAssertFalse(QuotaProviderKind.claude.supports(.apiToken))
+        XCTAssertTrue(QuotaProviderKind.claude.supports(.login))
+        XCTAssertEqual(
+            QuotaProviderKind.gemini.usageURL(for: .apiToken)?.absoluteString,
+            "https://aistudio.google.com/usage"
         )
     }
 
@@ -177,9 +219,7 @@ final class QuotaTransferTests: XCTestCase {
         let payload = QuotaAccountsTransferPayload(
             version: QuotaAccountsTransferPayload.supportedVersion + 1,
             accounts: [account],
-            selectedAccountID: account.id,
-            isAccountTextHidden: false,
-            widgetPageIndex: 0
+            selectedAccountID: account.id
         )
         let encoder = JSONEncoder()
         encoder.dateEncodingStrategy = .iso8601
@@ -199,6 +239,7 @@ final class QuotaTransferTests: XCTestCase {
 
         URLProtocolMock.requestHandler = { request in
             XCTAssertEqual(request.value(forHTTPHeaderField: "Authorization"), "Bearer test-token")
+            XCTAssertEqual(request.value(forHTTPHeaderField: "ChatGPT-Account-ID"), "session-789")
             let response = HTTPURLResponse(
                 url: try XCTUnwrap(request.url),
                 statusCode: 200,

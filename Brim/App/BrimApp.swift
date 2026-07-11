@@ -1,11 +1,65 @@
 import AppKit
+import OSLog
 import SwiftUI
 
 @main
 struct BrimApp: App {
+    private static let credentialMigrationLogger = Logger(
+        subsystem: "dev.brim.app",
+        category: "credential-migration"
+    )
+
+    @NSApplicationDelegateAdaptor(BrimApplicationDelegate.self) private var applicationDelegate
+    @StateObject private var store: QuotaStore
+    @StateObject private var navigation: BrimNavigationModel
+    @StateObject private var menuBarController: BrimMenuBarController
+
+    init() {
+        let repository = QuotaRepository()
+        let savedAccounts = repository.load().state.accounts
+        for account in savedAccounts where account.provider.usesProviderDashboard {
+            do {
+                // Older builds used the account UUID as the Keychain account value.
+                try CredentialStore.shared.deleteAPIToken(credentialID: account.id.uuidString)
+            } catch {
+                Self.credentialMigrationLogger.error(
+                    "retired_api_token_cleanup_failed account_id=\(account.id.uuidString, privacy: .public) error=\(error.localizedDescription, privacy: .public)"
+                )
+            }
+        }
+        do {
+            try ProviderProfileStorage.removeProfilesForDashboardOnlyProviders()
+        } catch {
+            Self.credentialMigrationLogger.error(
+                "retired_profile_cleanup_failed error=\(error.localizedDescription, privacy: .public)"
+            )
+        }
+
+        let refreshService = QuotaRefreshService(
+            apiTokenProvider: { CredentialStore.shared.readAPIToken(credentialID: $0) }
+        )
+        let store = QuotaStore(
+            repository: repository,
+            refreshService: refreshService
+        )
+        let navigation = BrimNavigationModel()
+        _store = StateObject(wrappedValue: store)
+        _navigation = StateObject(wrappedValue: navigation)
+        _menuBarController = StateObject(
+            wrappedValue: BrimMenuBarController(
+                store: store,
+                navigation: navigation
+            )
+        )
+    }
+
     var body: some Scene {
-        WindowGroup {
-            BrimAppRootView()
+        Window("Brim", id: BrimSceneID.mainWindow) {
+            BrimAppRootView(
+                navigation: navigation,
+                menuBarController: menuBarController
+            )
+                .environmentObject(store)
                 .frame(
                     minWidth: BrimWindowMetrics.minWidth,
                     maxWidth: .infinity,
@@ -13,9 +67,39 @@ struct BrimApp: App {
                     maxHeight: .infinity
                 )
                 .background(WindowSizeConfigurator())
+                .background(BrimMenuBarInstaller(controller: menuBarController))
         }
         .defaultSize(width: BrimWindowMetrics.defaultWidth, height: BrimWindowMetrics.defaultHeight)
         .windowStyle(.hiddenTitleBar)
+    }
+}
+
+@MainActor
+final class BrimApplicationDelegate: NSObject, NSApplicationDelegate {
+    func applicationDidFinishLaunching(_ notification: Notification) {
+        NSApplication.shared.setActivationPolicy(.accessory)
+    }
+
+    func applicationShouldTerminateAfterLastWindowClosed(_ sender: NSApplication) -> Bool {
+        false
+    }
+}
+
+private enum BrimSceneID {
+    static let mainWindow = "main-window"
+}
+
+@MainActor
+final class BrimNavigationModel: ObservableObject {
+    @Published private(set) var route: AppRoute?
+
+    func navigate(to route: AppRoute) {
+        // Reset first so selecting the same destination twice still replays the
+        // navigation after the user has moved elsewhere inside the window.
+        self.route = nil
+        Task { @MainActor [weak self] in
+            self?.route = route
+        }
     }
 }
 
@@ -81,22 +165,17 @@ private struct WindowSizeConfigurator: NSViewRepresentable {
 }
 
 private struct BrimAppRootView: View {
-    @State private var store: QuotaStore
-    @State private var route: AppRoute?
-
-    init() {
-        let refreshService = QuotaRefreshService(
-            apiTokenIsAvailable: { CredentialStore.shared.hasAPIToken(credentialID: $0) },
-            apiTokenProvider: { CredentialStore.shared.apiToken(credentialID: $0) }
-        )
-        _store = State(initialValue: QuotaStore(repository: QuotaRepository(), refreshService: refreshService))
-    }
+    @ObservedObject var navigation: BrimNavigationModel
+    @ObservedObject var menuBarController: BrimMenuBarController
 
     var body: some View {
-        AccountSettingsView(route: route)
-            .environmentObject(store)
+        AccountSettingsView(route: navigation.route)
             .onOpenURL { url in
-                route = AppRoute.parse(url)
+                guard let route = AppRoute.parse(url) else {
+                    return
+                }
+
+                navigation.navigate(to: route)
             }
     }
 }

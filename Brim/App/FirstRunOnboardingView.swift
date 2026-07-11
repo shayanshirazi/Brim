@@ -3,6 +3,7 @@ import SwiftUI
 struct FirstRunOnboardingView: View {
     var storageStatus: QuotaStorageStatus
     var addAccount: () -> Void
+    var openTransferSettings: () -> Void
 
     var body: some View {
         ZStack {
@@ -45,6 +46,10 @@ struct FirstRunOnboardingView: View {
                     .buttonStyle(.plain)
                     .keyboardShortcut(.defaultAction)
                     .help("Add your first account")
+
+                    Button("Import accounts", action: openTransferSettings)
+                        .buttonStyle(.link)
+                        .help("Open transfer settings to import a Brim accounts file")
 
                     OnboardingStatusLine(status: storageStatus)
                 }
@@ -253,7 +258,7 @@ private struct OnboardingStatusLine: View {
     private var copy: String? {
         switch status {
         case .ready:
-            return "Tokens stay in Keychain."
+            return "Credentials stay local to this Mac."
         case .firstRun:
             return "Takes less than a minute."
         case .corrupted:
@@ -261,7 +266,7 @@ private struct OnboardingStatusLine: View {
         case .saveFailed:
             return "Brim could not save the latest account changes."
         case .unavailable:
-            return "Shared widget storage is unavailable."
+            return "Brim cannot access local account storage."
         }
     }
 }

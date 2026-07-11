@@ -19,6 +19,25 @@ struct AccountSidebar: View {
     @State private var renamingAccountID: QuotaAccount.ID?
     @State private var accountPendingRemoval: QuotaAccount?
     @State private var draftName = ""
+    @State private var prioritizesAvailableUsage = false
+
+    private var displayedAccounts: [QuotaAccount] {
+        guard prioritizesAvailableUsage else {
+            return accounts
+        }
+
+        return accounts.enumerated().sorted { lhs, rhs in
+            if AccountUsagePriority.areInIncreasingOrder(lhs.element, rhs.element) {
+                return true
+            }
+
+            if AccountUsagePriority.areInIncreasingOrder(rhs.element, lhs.element) {
+                return false
+            }
+
+            return lhs.offset < rhs.offset
+        }.map(\.element)
+    }
 
     var body: some View {
         VStack(alignment: .leading, spacing: 18) {
@@ -40,6 +59,31 @@ struct AccountSidebar: View {
                 Spacer()
 
                 HStack(spacing: 8) {
+                    Button {
+                        withAnimation(.snappy(duration: 0.22)) {
+                            prioritizesAvailableUsage.toggle()
+                        }
+                    } label: {
+                        Image(systemName: "line.3.horizontal.decrease")
+                            .font(.system(size: 11, weight: .semibold))
+                            .foregroundStyle(
+                                prioritizesAvailableUsage
+                                    ? Color(hex: "#22C55E")
+                                    : .primary.opacity(0.68)
+                            )
+                            .frame(width: 26, height: 26)
+                            .background(
+                                prioritizesAvailableUsage
+                                    ? Color(hex: "#22C55E").opacity(0.10)
+                                    : Color.primary.opacity(0.045),
+                                in: Circle()
+                            )
+                    }
+                    .buttonStyle(.plain)
+                    .help(prioritizesAvailableUsage ? "Use custom account order" : "Prioritize available usage")
+                    .accessibilityLabel("Prioritize available usage")
+                    .accessibilityValue(prioritizesAvailableUsage ? "On" : "Off")
+
                     Button(action: refreshAllAccounts) {
                         Image(systemName: "arrow.triangle.2.circlepath")
                             .font(.system(size: 11, weight: .semibold))
@@ -75,54 +119,13 @@ struct AccountSidebar: View {
 
             ScrollView {
                 VStack(spacing: 8) {
-                    ForEach(accounts) { account in
-                        AccountSidebarRow(
-                            account: account,
-                            isSelected: selectedAccountID == account.id,
-                            isDragging: draggingAccountID == account.id,
-                            isDropTarget: dropTargetAccountID == account.id && draggingAccountID != account.id,
-                            isRenaming: renamingAccountID == account.id,
-                            draftName: $draftName,
-                            selectAccount: {
-                                selectAccount(account.id)
-                            },
-                            beginRename: {
-                                selectAccount(account.id)
-                                renamingAccountID = account.id
-                                draftName = account.name
-                            },
-                            commitRename: {
-                                commitRename(for: account.id)
-                            },
-                            removeAccount: {
-                                requestRemoval(of: account)
-                            }
-                        )
-                        .onDrag {
-                            withAnimation(.interactiveSpring(response: 0.24, dampingFraction: 0.84)) {
-                                draggingAccountID = account.id
-                                dropTargetAccountID = nil
-                            }
-                            selectAccount(account.id)
-                            return NSItemProvider(object: account.id.uuidString as NSString)
-                        } preview: {
-                            AccountSidebarDragPreview(account: account)
-                        }
-                        .onDrop(
-                            of: [UTType.text],
-                            delegate: AccountSidebarDropDelegate(
-                                targetAccount: account,
-                                accounts: accounts,
-                                draggingAccountID: $draggingAccountID,
-                                dropTargetAccountID: $dropTargetAccountID,
-                                moveAccounts: moveAccounts
-                            )
-                        )
+                    ForEach(displayedAccounts) { account in
+                        accountRow(for: account)
                     }
                 }
                 .padding(.horizontal, 12)
                 .padding(.bottom, 12)
-                .animation(.interactiveSpring(response: 0.28, dampingFraction: 0.86), value: accounts.map(\.id))
+                .animation(.interactiveSpring(response: 0.28, dampingFraction: 0.86), value: displayedAccounts.map(\.id))
             }
 
             SidebarSettingsButton(
@@ -155,7 +158,7 @@ struct AccountSidebar: View {
                 accountPendingRemoval = nil
             }
         } message: { account in
-            Text("This removes \(account.name) from Brim. If this account has an API token, Brim removes it from Keychain.")
+            Text("This removes \(account.name) from Brim, including its private login profile or saved API key on this Mac.")
         }
     }
 
@@ -174,6 +177,58 @@ struct AccountSidebar: View {
         accountPendingRemoval = account
     }
 
+    @ViewBuilder
+    private func accountRow(for account: QuotaAccount) -> some View {
+        let row = AccountSidebarRow(
+            account: account,
+            isSelected: selectedAccountID == account.id,
+            isDragging: draggingAccountID == account.id,
+            isDropTarget: dropTargetAccountID == account.id && draggingAccountID != account.id,
+            isRenaming: renamingAccountID == account.id,
+            draftName: $draftName,
+            selectAccount: {
+                selectAccount(account.id)
+            },
+            beginRename: {
+                selectAccount(account.id)
+                renamingAccountID = account.id
+                draftName = account.name
+            },
+            commitRename: {
+                commitRename(for: account.id)
+            },
+            removeAccount: {
+                requestRemoval(of: account)
+            }
+        )
+
+        if prioritizesAvailableUsage {
+            row
+        } else {
+            row
+                .onDrag {
+                    withAnimation(.interactiveSpring(response: 0.24, dampingFraction: 0.84)) {
+                        draggingAccountID = account.id
+                        dropTargetAccountID = nil
+                    }
+                    selectAccount(account.id)
+                    return NSItemProvider(object: account.id.uuidString as NSString)
+                } preview: {
+                    AccountSidebarDragPreview(account: account)
+                }
+                .onDrop(
+                    of: [UTType.text],
+                    delegate: AccountSidebarDropDelegate(
+                        targetAccount: account,
+                        accounts: accounts,
+                        draggingAccountID: $draggingAccountID,
+                        dropTargetAccountID: $dropTargetAccountID,
+                        moveAccounts: moveAccounts
+                    )
+                )
+        }
+    }
+
     private func confirmRemoval(of account: QuotaAccount) {
         removeAccount(account.id)
         accountPendingRemoval = nil
@@ -187,6 +242,41 @@ struct AccountSidebar: View {
 
         renamingAccountID = nil
         draftName = ""
+    }
+}
+
+enum AccountUsagePriority {
+    static func areInIncreasingOrder(_ lhs: QuotaAccount, _ rhs: QuotaAccount) -> Bool {
+        let lhsRank = availabilityRank(for: lhs)
+        let rhsRank = availabilityRank(for: rhs)
+        if lhsRank != rhsRank {
+            return lhsRank < rhsRank
+        }
+
+        if lhsRank == 0 {
+            if lhs.sessionRemainingFraction != rhs.sessionRemainingFraction {
+                return lhs.sessionRemainingFraction > rhs.sessionRemainingFraction
+            }
+
+            if lhs.weeklyRemainingFraction != rhs.weeklyRemainingFraction {
+                return lhs.weeklyRemainingFraction > rhs.weeklyRemainingFraction
+            }
+        }
+
+        return false
+    }
+
+    private static func availabilityRank(for account: QuotaAccount) -> Int {
+        switch account.signalState {
+        case .ready:
+            return account.hasUsageSnapshot ? 0 : 2
+        case .exhausted:
+            return 1
+        case .waitingForQuotaSource, .refreshFailed, .manual, .dashboardOnly:
+            return 2
+        case .notConnected:
+            return 3
+        }
     }
 }
 

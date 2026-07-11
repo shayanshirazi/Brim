@@ -9,9 +9,15 @@ struct UsagePanel: View {
 
     var body: some View {
         VStack(alignment: .leading, spacing: 12) {
-            PanelTitle(icon: "hourglass", title: "Rate limits")
+            PanelTitle(
+                icon: account.provider.usesProviderDashboard ? "arrow.up.forward.app" : "hourglass",
+                title: account.provider.usesProviderDashboard ? "Usage" : "Rate limits"
+            )
 
-            if account.hasUsageSnapshot {
+            if account.provider.usesProviderDashboard {
+                DashboardOnlyUsageState(provider: account.provider)
+                    .frame(maxWidth: .infinity, minHeight: 154, alignment: .center)
+            } else if account.hasUsageSnapshot {
                 VStack(spacing: 8) {
                     QuotaMetricRow(
                         title: account.connectionKind == .apiToken
@@ -42,8 +48,12 @@ struct UsagePanel: View {
 
             Spacer(minLength: account.hasUsageSnapshot ? 0 : 8)
 
-            if let usageURL = account.provider.usageURL {
-                UsageDashboardLink(providerName: account.provider.displayName, url: usageURL)
+            if let usageURL = account.provider.usageURL(for: account.connectionKind) {
+                UsageDashboardLink(
+                    providerName: account.provider.displayName,
+                    url: usageURL,
+                    dashboardOnly: account.provider.usesProviderDashboard
+                )
             }
 
             Divider()
@@ -64,6 +74,7 @@ struct UsagePanel: View {
 private struct UsageDashboardLink: View {
     var providerName: String
     var url: URL
+    var dashboardOnly: Bool
 
     var body: some View {
         Link(destination: url) {
@@ -71,7 +82,7 @@ private struct UsageDashboardLink: View {
                 Image(systemName: "checkmark.seal")
                     .font(.system(size: 11, weight: .semibold))
 
-                Text("Verify in \(providerName)")
+                Text(dashboardOnly ? "Open \(providerName) usage" : "Verify in \(providerName)")
                     .font(.system(size: 11, weight: .bold, design: .rounded))
 
                 Image(systemName: "arrow.up.right")
@@ -91,6 +102,46 @@ private struct UsageDashboardLink: View {
         .buttonStyle(.plain)
         .frame(maxWidth: .infinity, alignment: .center)
         .help("Open the \(providerName) usage dashboard")
+    }
+}
+
+private struct DashboardOnlyUsageState: View {
+    var provider: QuotaProviderKind
+
+    private var accent: Color {
+        Color(hex: provider.brandColorHex)
+    }
+
+    var body: some View {
+        VStack(spacing: 10) {
+            ProviderLogoMark(provider: provider, size: 42)
+                .padding(5)
+                .background(accent.opacity(0.08), in: Circle())
+
+            VStack(spacing: 5) {
+                Text("Shown by \(provider.displayName)")
+                    .font(.system(size: 14, weight: .bold, design: .rounded))
+
+                Text(detail)
+                    .font(.system(size: 12, weight: .medium, design: .rounded))
+                    .foregroundStyle(.secondary)
+                    .multilineTextAlignment(.center)
+                    .fixedSize(horizontal: false, vertical: true)
+            }
+        }
+        .padding(.horizontal, 22)
+        .frame(maxWidth: 248)
+    }
+
+    private var detail: String {
+        switch provider {
+        case .chatgpt:
+            return "Ordinary chat limits are separate from Codex and available in ChatGPT."
+        case .claude:
+            return "Claude and Claude Code share the limits shown on Claude's usage page."
+        case .codex, .gemini:
+            return "Open the provider dashboard to view usage."
+        }
     }
 }
 

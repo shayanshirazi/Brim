@@ -3,19 +3,13 @@ import Foundation
 public struct QuotaState: Equatable {
     public var accounts: [QuotaAccount]
     public var selectedAccountID: QuotaAccount.ID?
-    public var isAccountTextHidden: Bool
-    public var widgetPageIndex: Int
 
     public init(
         accounts: [QuotaAccount],
-        selectedAccountID: QuotaAccount.ID? = nil,
-        isAccountTextHidden: Bool = false,
-        widgetPageIndex: Int = 0
+        selectedAccountID: QuotaAccount.ID? = nil
     ) {
         self.accounts = accounts
         self.selectedAccountID = selectedAccountID
-        self.isAccountTextHidden = isAccountTextHidden
-        self.widgetPageIndex = widgetPageIndex
         normalize()
     }
 
@@ -38,17 +32,16 @@ public struct QuotaState: Equatable {
         normalize()
     }
 
-    public mutating func removeAccounts(at offsets: IndexSet, pageSize: Int = QuotaAccountDefaults.mediumWidgetSlotCount) {
+    public mutating func removeAccounts(at offsets: IndexSet) {
         for index in offsets.sorted(by: >) where accounts.indices.contains(index) {
             accounts.remove(at: index)
         }
-        normalize(pageSize: pageSize)
+        normalize()
     }
 
     public mutating func moveAccounts(
         fromOffsets source: IndexSet,
-        toOffset destination: Int,
-        pageSize: Int = QuotaAccountDefaults.mediumWidgetSlotCount
+        toOffset destination: Int
     ) {
         let sourceIndexes = source.sorted().filter { accounts.indices.contains($0) }
         guard !sourceIndexes.isEmpty else {
@@ -63,7 +56,7 @@ public struct QuotaState: Equatable {
         let removedBeforeDestination = sourceIndexes.filter { $0 < destination }.count
         let insertionIndex = min(max(0, destination - removedBeforeDestination), accounts.count)
         accounts.insert(contentsOf: movingAccounts, at: insertionIndex)
-        normalize(pageSize: pageSize)
+        normalize()
     }
 
     public mutating func updateAccount(_ account: QuotaAccount) {
@@ -79,32 +72,13 @@ public struct QuotaState: Equatable {
         normalize()
     }
 
-    public mutating func setWidgetPageIndex(_ pageIndex: Int, pageSize: Int) {
-        widgetPageIndex = pageIndex
-        normalize(pageSize: pageSize)
-    }
-
-    public mutating func moveWidgetPage(by offset: Int, pageSize: Int) {
-        setWidgetPageIndex(widgetPageIndex + offset, pageSize: pageSize)
-    }
-
-    public mutating func setAccountTextHidden(_ isHidden: Bool) {
-        isAccountTextHidden = isHidden
-    }
-
-    public mutating func toggleAccountTextHidden() {
-        isAccountTextHidden.toggle()
-    }
-
     public mutating func resetSeedData() {
         accounts = QuotaAccountDefaults.examples
         selectedAccountID = accounts.first?.id
-        isAccountTextHidden = false
-        widgetPageIndex = 0
         normalize()
     }
 
-    public mutating func normalize(pageSize: Int = QuotaAccountDefaults.mediumWidgetSlotCount) {
+    public mutating func normalize() {
         accounts = accounts.map { $0.normalizedForStorage() }
 
         if let selectedAccountID, accounts.contains(where: { $0.id == selectedAccountID }) {
@@ -112,19 +86,6 @@ public struct QuotaState: Equatable {
         } else {
             selectedAccountID = accounts.first?.id
         }
-
-        let safePageSize = max(1, pageSize)
-        let maxPageIndex = max(0, Int(ceil(Double(accounts.count) / Double(safePageSize))) - 1)
-        widgetPageIndex = min(max(0, widgetPageIndex), maxPageIndex)
-    }
-
-    public func widgetSnapshotState() -> QuotaState {
-        QuotaState(
-            accounts: accounts.map { $0.widgetSnapshotAccount() },
-            selectedAccountID: selectedAccountID,
-            isAccountTextHidden: isAccountTextHidden,
-            widgetPageIndex: widgetPageIndex
-        )
     }
 }
 
@@ -143,6 +104,20 @@ public extension QuotaAccount {
         account.weeklyUsedPercent = account.weeklyUsedPercent.map { min(100, max(0, $0)) }
         account.sessionUsedPercent = account.sessionUsedPercent.map { min(100, max(0, $0)) }
         account.hasUsageSnapshot = account.connectionKind == .manual ? true : account.hasUsageSnapshot
+        if account.provider.usesProviderDashboard, account.connectionKind != .manual {
+            account.connectionKind = .login
+            account.providerAccountID = nil
+            account.accountEmail = nil
+            account.credentialID = nil
+            account.providerProfilePath = nil
+            account.hasUsageSnapshot = false
+            account.weeklyUsedPercent = nil
+            account.sessionUsedPercent = nil
+            account.sessionResetAt = nil
+            account.weeklyResetAt = nil
+            account.refreshStatus = .dashboardOnly
+            account.refreshMessage = "Usage stays in \(account.provider.displayName). Open its dashboard to verify it."
+        }
         account.resetWeekday = min(max(1, resetWeekday), 7)
         account.resetHour = min(max(0, resetHour), 23)
         account.resetMinute = min(max(0, resetMinute), 59)

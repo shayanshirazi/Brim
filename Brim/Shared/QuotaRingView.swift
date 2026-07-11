@@ -1,5 +1,4 @@
 import SwiftUI
-import WidgetKit
 
 public enum QuotaRingSurfaceStyle {
     case standard
@@ -7,8 +6,6 @@ public enum QuotaRingSurfaceStyle {
 }
 
 public struct QuotaRingView: View {
-    @Environment(\.widgetRenderingMode) private var widgetRenderingMode
-
     public var account: QuotaAccount?
     public var diameter: CGFloat
     public var lineWidth: CGFloat
@@ -16,18 +13,12 @@ public struct QuotaRingView: View {
     public var surfaceStyle: QuotaRingSurfaceStyle
     public var showsFills: Bool
 
-    /// In the desktop's tinted/vibrant state, layered fills smear into solid discs —
-    /// render strokes and the signal dot only.
-    private var isVibrant: Bool {
-        widgetRenderingMode == .vibrant
-    }
-
     private var rendersFills: Bool {
-        showsFills && !isVibrant
+        showsFills
     }
 
     // All metrics scale with the diameter (ratios taken from the 32pt sidebar ring),
-    // so every ring in the app and widget is an exact scale of the same design.
+    // so every ring in the app is an exact scale of the same design.
     private var connectionDotSize: CGFloat {
         max(6, diameter * 0.22)
     }
@@ -103,9 +94,8 @@ public struct QuotaRingView: View {
                     ConnectionSignalDot(
                         state: account.signalState,
                         size: connectionDotSize,
-                        borderOpacity: isVibrant ? 0.34 : 0.70,
-                        glowRadius: isVibrant ? 0 : max(3, diameter * 0.125),
-                        isVibrant: isVibrant
+                        borderOpacity: 0.70,
+                        glowRadius: max(3, diameter * 0.125)
                     )
                 }
             }
@@ -134,47 +124,6 @@ public struct QuotaRingView: View {
     }
 }
 
-/// The widget ring is the app ring at widget scale, plus a selection stroke.
-public struct NestedQuotaRingView: View {
-    @Environment(\.widgetRenderingMode) private var widgetRenderingMode
-
-    public var account: QuotaAccount?
-    public var diameter: CGFloat
-    public var isSelected: Bool
-
-    private var isVibrant: Bool {
-        widgetRenderingMode == .vibrant
-    }
-
-    public init(account: QuotaAccount?, diameter: CGFloat, isSelected: Bool = false) {
-        self.account = account
-        self.diameter = diameter
-        self.isSelected = isSelected
-    }
-
-    public var body: some View {
-        ZStack {
-            QuotaRingView(
-                account: account,
-                diameter: diameter,
-                showPercent: false,
-                showsFills: false
-            )
-
-            if isSelected {
-                Circle()
-                    .stroke(
-                        Color.primary.opacity(isVibrant ? 0.34 : 0.26),
-                        lineWidth: 1.3
-                    )
-                    .padding(-4.5)
-                    .frame(width: diameter, height: diameter)
-            }
-        }
-        .animation(.snappy(duration: 0.22), value: isSelected)
-    }
-}
-
 private struct ConnectionSignalDot: View {
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
 
@@ -182,7 +131,6 @@ private struct ConnectionSignalDot: View {
     var size: CGFloat
     var borderOpacity: Double
     var glowRadius: CGFloat
-    var isVibrant = false
 
     private var signalColor: Color {
         switch state {
@@ -196,6 +144,8 @@ private struct ConnectionSignalDot: View {
             return Color(hex: "#E58C30")
         case .manual:
             return .secondary
+        case .dashboardOnly:
+            return Color(hex: "#8B949E")
         case .notConnected:
             return Color(hex: "#FF4D57")
         }
@@ -214,10 +164,9 @@ private struct ConnectionSignalDot: View {
                 Circle()
                     .stroke(Color.white.opacity(borderOpacity), lineWidth: max(1, size * 0.09))
             }
-            .shadow(color: signalColor.opacity(isVibrant ? 0.22 : 0.34), radius: glowRadius)
+            .shadow(color: signalColor.opacity(0.34), radius: glowRadius)
             .scaleEffect(dotScale)
             .frame(width: size * 1.6, height: size * 1.6)
-            .widgetAccentable(false)
             .animation(reduceMotion ? nil : .easeInOut(duration: 0.20), value: state)
     }
 }

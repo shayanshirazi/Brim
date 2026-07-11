@@ -13,34 +13,12 @@
 		000000000000000000000004 /* QuotaStore.swift in Sources */ = {isa = PBXBuildFile; fileRef = 000000000000000000000104 /* QuotaStore.swift */; };
 		000000000000000000000005 /* QuotaRingView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 000000000000000000000105 /* QuotaRingView.swift */; };
 		000000000000000000000006 /* Assets.xcassets in Resources */ = {isa = PBXBuildFile; fileRef = 000000000000000000000106 /* Assets.xcassets */; };
-		000000000000000000000007 /* BrimWidget.swift in Sources */ = {isa = PBXBuildFile; fileRef = 000000000000000000000107 /* BrimWidget.swift */; };
-		000000000000000000000008 /* QuotaAccount.swift in Sources */ = {isa = PBXBuildFile; fileRef = 000000000000000000000103 /* QuotaAccount.swift */; };
-		000000000000000000000009 /* QuotaStore.swift in Sources */ = {isa = PBXBuildFile; fileRef = 000000000000000000000104 /* QuotaStore.swift */; };
-		00000000000000000000000A /* QuotaRingView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 000000000000000000000105 /* QuotaRingView.swift */; };
-		00000000000000000000000B /* Assets.xcassets in Resources */ = {isa = PBXBuildFile; fileRef = 000000000000000000000108 /* Assets.xcassets */; };
-		00000000000000000000000C /* BrimWidget.appex in Embed App Extensions */ = {isa = PBXBuildFile; fileRef = 000000000000000000000201 /* BrimWidget.appex */; settings = {ATTRIBUTES = (CodeSignOnCopy, RemoveHeadersOnCopy, ); }; };
 		00000000000000000000000D /* QuotaAccountDefaults.swift in Sources */ = {isa = PBXBuildFile; fileRef = 00000000000000000000010D /* QuotaAccountDefaults.swift */; };
-		00000000000000000000000E /* QuotaAccountDefaults.swift in Sources */ = {isa = PBXBuildFile; fileRef = 00000000000000000000010D /* QuotaAccountDefaults.swift */; };
 		00000000000000000000000F /* QuotaFormatting.swift in Sources */ = {isa = PBXBuildFile; fileRef = 00000000000000000000010E /* QuotaFormatting.swift */; };
-		000000000000000000000010 /* QuotaFormatting.swift in Sources */ = {isa = PBXBuildFile; fileRef = 00000000000000000000010E /* QuotaFormatting.swift */; };
 		000000000000000000000011 /* QuotaColor.swift in Sources */ = {isa = PBXBuildFile; fileRef = 00000000000000000000010F /* QuotaColor.swift */; };
-		000000000000000000000012 /* QuotaColor.swift in Sources */ = {isa = PBXBuildFile; fileRef = 00000000000000000000010F /* QuotaColor.swift */; };
 		000000000000000000000013 /* QuotaState.swift in Sources */ = {isa = PBXBuildFile; fileRef = 000000000000000000000110 /* QuotaState.swift */; };
-		000000000000000000000014 /* QuotaState.swift in Sources */ = {isa = PBXBuildFile; fileRef = 000000000000000000000110 /* QuotaState.swift */; };
 		000000000000000000000015 /* QuotaRepository.swift in Sources */ = {isa = PBXBuildFile; fileRef = 000000000000000000000111 /* QuotaRepository.swift */; };
-		000000000000000000000016 /* QuotaRepository.swift in Sources */ = {isa = PBXBuildFile; fileRef = 000000000000000000000111 /* QuotaRepository.swift */; };
 		000000000000000000000017 /* AppRoute.swift in Sources */ = {isa = PBXBuildFile; fileRef = 000000000000000000000112 /* AppRoute.swift */; };
-		000000000000000000000018 /* AppRoute.swift in Sources */ = {isa = PBXBuildFile; fileRef = 000000000000000000000112 /* AppRoute.swift */; };
-		000000000000000000000019 /* QuotaWidgetLayout.swift in Sources */ = {isa = PBXBuildFile; fileRef = 000000000000000000000113 /* QuotaWidgetLayout.swift */; };
-		00000000000000000000001A /* QuotaWidgetLayout.swift in Sources */ = {isa = PBXBuildFile; fileRef = 000000000000000000000113 /* QuotaWidgetLayout.swift */; };
-		00000000000000000000001B /* QuotaWidgetSurfaces.swift in Sources */ = {isa = PBXBuildFile; fileRef = 000000000000000000000114 /* QuotaWidgetSurfaces.swift */; };
-		00000000000000000000001C /* QuotaWidgetSurfaces.swift in Sources */ = {isa = PBXBuildFile; fileRef = 000000000000000000000114 /* QuotaWidgetSurfaces.swift */; };
-		00000000000000000000001D /* QuotaWidgetControls.swift in Sources */ = {isa = PBXBuildFile; fileRef = 000000000000000000000115 /* QuotaWidgetControls.swift */; };
-		00000000000000000000001E /* QuotaWidgetControls.swift in Sources */ = {isa = PBXBuildFile; fileRef = 000000000000000000000115 /* QuotaWidgetControls.swift */; };
-		00000000000000000000001F /* QuotaWidgetContent.swift in Sources */ = {isa = PBXBuildFile; fileRef = 000000000000000000000116 /* QuotaWidgetContent.swift */; };
-		000000000000000000000020 /* QuotaWidgetContent.swift in Sources */ = {isa = PBXBuildFile; fileRef = 000000000000000000000116 /* QuotaWidgetContent.swift */; };
-		000000000000000000000021 /* QuotaWidgetCard.swift in Sources */ = {isa = PBXBuildFile; fileRef = 000000000000000000000117 /* QuotaWidgetCard.swift */; };
-		000000000000000000000022 /* QuotaWidgetCard.swift in Sources */ = {isa = PBXBuildFile; fileRef = 000000000000000000000117 /* QuotaWidgetCard.swift */; };
 		000000000000000000000023 /* AccountSidebar.swift in Sources */ = {isa = PBXBuildFile; fileRef = 000000000000000000000118 /* AccountSidebar.swift */; };
 		000000000000000000000024 /* AccountEditor.swift in Sources */ = {isa = PBXBuildFile; fileRef = 000000000000000000000119 /* AccountEditor.swift */; };
 		000000000000000000000025 /* UsagePanel.swift in Sources */ = {isa = PBXBuildFile; fileRef = 00000000000000000000011A /* UsagePanel.swift */; };
@@ -52,16 +30,17 @@
 		00000000000000000000002B /* QuotaRefreshServiceTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 000000000000000000000120 /* QuotaRefreshServiceTests.swift */; };
 		00000000000000000000002C /* FirstRunOnboardingView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 000000000000000000000121 /* FirstRunOnboardingView.swift */; };
 		00000000000000000000002D /* AddAccountSheet.swift in Sources */ = {isa = PBXBuildFile; fileRef = 000000000000000000000122 /* AddAccountSheet.swift */; };
+		00000000000000000000002E /* ProviderProfileStorage.swift in Sources */ = {isa = PBXBuildFile; fileRef = 000000000000000000000123 /* ProviderProfileStorage.swift */; };
+		000000000000000000000030 /* ProviderSessionIsolationTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 000000000000000000000124 /* ProviderSessionIsolationTests.swift */; };
+		000000000000000000000031 /* QuotaAccountsTransfer.swift in Sources */ = {isa = PBXBuildFile; fileRef = 000000000000000000000125 /* QuotaAccountsTransfer.swift */; };
+		000000000000000000000033 /* AccountSettingsAbout.swift in Sources */ = {isa = PBXBuildFile; fileRef = 000000000000000000000126 /* AccountSettingsAbout.swift */; };
+		000000000000000000000034 /* BrimRefreshInterval.swift in Sources */ = {isa = PBXBuildFile; fileRef = 000000000000000000000127 /* BrimRefreshInterval.swift */; };
+		000000000000000000000035 /* QuotaRefreshModels.swift in Sources */ = {isa = PBXBuildFile; fileRef = 000000000000000000000128 /* QuotaRefreshModels.swift */; };
+		000000000000000000000037 /* MenuBarSettingsView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 000000000000000000000129 /* MenuBarSettingsView.swift */; };
+		000000000000000000000038 /* BrimMenuBarController.swift in Sources */ = {isa = PBXBuildFile; fileRef = 00000000000000000000012A /* BrimMenuBarController.swift */; };
 /* End PBXBuildFile section */
 
 /* Begin PBXContainerItemProxy section */
-		000000000000000000000301 /* PBXContainerItemProxy */ = {
-			isa = PBXContainerItemProxy;
-			containerPortal = 000000000000000000000400 /* Project object */;
-			proxyType = 1;
-			remoteGlobalIDString = 000000000000000000000501;
-			remoteInfo = BrimWidget;
-		};
 		000000000000000000000303 /* PBXContainerItemProxy */ = {
 			isa = PBXContainerItemProxy;
 			containerPortal = 000000000000000000000400 /* Project object */;
@@ -71,20 +50,6 @@
 		};
 /* End PBXContainerItemProxy section */
 
-/* Begin PBXCopyFilesBuildPhase section */
-		000000000000000000000601 /* Embed App Extensions */ = {
-			isa = PBXCopyFilesBuildPhase;
-			buildActionMask = 2147483647;
-			dstPath = "";
-			dstSubfolderSpec = 13;
-			files = (
-				00000000000000000000000C /* BrimWidget.appex in Embed App Extensions */,
-			);
-			name = "Embed App Extensions";
-			runOnlyForDeploymentPostprocessing = 0;
-		};
-/* End PBXCopyFilesBuildPhase section */
-
 /* Begin PBXFileReference section */
 		000000000000000000000101 /* BrimApp.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = BrimApp.swift; sourceTree = "<group>"; };
 		000000000000000000000102 /* AccountSettingsView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AccountSettingsView.swift; sourceTree = "<group>"; };
@@ -92,23 +57,14 @@
 		000000000000000000000104 /* QuotaStore.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = QuotaStore.swift; sourceTree = "<group>"; };
 		000000000000000000000105 /* QuotaRingView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = QuotaRingView.swift; sourceTree = "<group>"; };
 		000000000000000000000106 /* Assets.xcassets */ = {isa = PBXFileReference; lastKnownFileType = folder.assetcatalog; path = Assets.xcassets; sourceTree = "<group>"; };
-		000000000000000000000107 /* BrimWidget.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = BrimWidget.swift; sourceTree = "<group>"; };
-		000000000000000000000108 /* Assets.xcassets */ = {isa = PBXFileReference; lastKnownFileType = folder.assetcatalog; path = Assets.xcassets; sourceTree = "<group>"; };
 		000000000000000000000109 /* Info.plist */ = {isa = PBXFileReference; lastKnownFileType = text.plist.xml; path = Info.plist; sourceTree = "<group>"; };
-		00000000000000000000010A /* Info.plist */ = {isa = PBXFileReference; lastKnownFileType = text.plist.xml; path = Info.plist; sourceTree = "<group>"; };
 		00000000000000000000010B /* Brim.entitlements */ = {isa = PBXFileReference; lastKnownFileType = text.plist.entitlements; path = Brim.entitlements; sourceTree = "<group>"; };
-		00000000000000000000010C /* BrimWidget.entitlements */ = {isa = PBXFileReference; lastKnownFileType = text.plist.entitlements; path = BrimWidget.entitlements; sourceTree = "<group>"; };
 		00000000000000000000010D /* QuotaAccountDefaults.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = QuotaAccountDefaults.swift; sourceTree = "<group>"; };
 		00000000000000000000010E /* QuotaFormatting.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = QuotaFormatting.swift; sourceTree = "<group>"; };
 		00000000000000000000010F /* QuotaColor.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = QuotaColor.swift; sourceTree = "<group>"; };
 		000000000000000000000110 /* QuotaState.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = QuotaState.swift; sourceTree = "<group>"; };
 		000000000000000000000111 /* QuotaRepository.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = QuotaRepository.swift; sourceTree = "<group>"; };
 		000000000000000000000112 /* AppRoute.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AppRoute.swift; sourceTree = "<group>"; };
-		000000000000000000000113 /* QuotaWidgetLayout.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = QuotaWidgetLayout.swift; sourceTree = "<group>"; };
-		000000000000000000000114 /* QuotaWidgetSurfaces.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = QuotaWidgetSurfaces.swift; sourceTree = "<group>"; };
-		000000000000000000000115 /* QuotaWidgetControls.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = QuotaWidgetControls.swift; sourceTree = "<group>"; };
-		000000000000000000000116 /* QuotaWidgetContent.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = QuotaWidgetContent.swift; sourceTree = "<group>"; };
-		000000000000000000000117 /* QuotaWidgetCard.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = QuotaWidgetCard.swift; sourceTree = "<group>"; };
 		000000000000000000000118 /* AccountSidebar.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AccountSidebar.swift; sourceTree = "<group>"; };
 		000000000000000000000119 /* AccountEditor.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AccountEditor.swift; sourceTree = "<group>"; };
 		00000000000000000000011A /* UsagePanel.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = UsagePanel.swift; sourceTree = "<group>"; };
@@ -120,20 +76,20 @@
 		000000000000000000000120 /* QuotaRefreshServiceTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = QuotaRefreshServiceTests.swift; sourceTree = "<group>"; };
 		000000000000000000000121 /* FirstRunOnboardingView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = FirstRunOnboardingView.swift; sourceTree = "<group>"; };
 		000000000000000000000122 /* AddAccountSheet.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AddAccountSheet.swift; sourceTree = "<group>"; };
+		000000000000000000000123 /* ProviderProfileStorage.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ProviderProfileStorage.swift; sourceTree = "<group>"; };
+		000000000000000000000124 /* ProviderSessionIsolationTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ProviderSessionIsolationTests.swift; sourceTree = "<group>"; };
+		000000000000000000000125 /* QuotaAccountsTransfer.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = QuotaAccountsTransfer.swift; sourceTree = "<group>"; };
+		000000000000000000000126 /* AccountSettingsAbout.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AccountSettingsAbout.swift; sourceTree = "<group>"; };
+		000000000000000000000127 /* BrimRefreshInterval.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = BrimRefreshInterval.swift; sourceTree = "<group>"; };
+		000000000000000000000128 /* QuotaRefreshModels.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = QuotaRefreshModels.swift; sourceTree = "<group>"; };
+		000000000000000000000129 /* MenuBarSettingsView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MenuBarSettingsView.swift; sourceTree = "<group>"; };
+		00000000000000000000012A /* BrimMenuBarController.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = BrimMenuBarController.swift; sourceTree = "<group>"; };
 		000000000000000000000200 /* Brim.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = Brim.app; sourceTree = BUILT_PRODUCTS_DIR; };
-		000000000000000000000201 /* BrimWidget.appex */ = {isa = PBXFileReference; explicitFileType = "wrapper.app-extension"; includeInIndex = 0; path = BrimWidget.appex; sourceTree = BUILT_PRODUCTS_DIR; };
 		000000000000000000000202 /* BrimTests.xctest */ = {isa = PBXFileReference; explicitFileType = wrapper.cfbundle; includeInIndex = 0; path = BrimTests.xctest; sourceTree = BUILT_PRODUCTS_DIR; };
 /* End PBXFileReference section */
 
 /* Begin PBXFrameworksBuildPhase section */
 		000000000000000000000701 /* Frameworks */ = {
-			isa = PBXFrameworksBuildPhase;
-			buildActionMask = 2147483647;
-			files = (
-			);
-			runOnlyForDeploymentPostprocessing = 0;
-		};
-		000000000000000000000702 /* Frameworks */ = {
 			isa = PBXFrameworksBuildPhase;
 			buildActionMask = 2147483647;
 			files = (
@@ -163,7 +119,6 @@
 			isa = PBXGroup;
 			children = (
 				000000000000000000000804 /* App */,
-				000000000000000000000805 /* Widget */,
 				000000000000000000000806 /* Shared */,
 			);
 			path = Brim;
@@ -173,7 +128,6 @@
 			isa = PBXGroup;
 			children = (
 				000000000000000000000200 /* Brim.app */,
-				000000000000000000000201 /* BrimWidget.appex */,
 				000000000000000000000202 /* BrimTests.xctest */,
 			);
 			name = Products;
@@ -183,7 +137,11 @@
 			isa = PBXGroup;
 			children = (
 				000000000000000000000101 /* BrimApp.swift */,
+				00000000000000000000012A /* BrimMenuBarController.swift */,
 				000000000000000000000102 /* AccountSettingsView.swift */,
+				000000000000000000000126 /* AccountSettingsAbout.swift */,
+				000000000000000000000127 /* BrimRefreshInterval.swift */,
+				000000000000000000000129 /* MenuBarSettingsView.swift */,
 				000000000000000000000121 /* FirstRunOnboardingView.swift */,
 				000000000000000000000122 /* AddAccountSheet.swift */,
 				000000000000000000000118 /* AccountSidebar.swift */,
@@ -200,17 +158,6 @@
 			path = App;
 			sourceTree = "<group>";
 		};
-		000000000000000000000805 /* Widget */ = {
-			isa = PBXGroup;
-			children = (
-				000000000000000000000107 /* BrimWidget.swift */,
-				000000000000000000000108 /* Assets.xcassets */,
-				00000000000000000000010A /* Info.plist */,
-				00000000000000000000010C /* BrimWidget.entitlements */,
-			);
-			path = Widget;
-			sourceTree = "<group>";
-		};
 		000000000000000000000806 /* Shared */ = {
 			isa = PBXGroup;
 			children = (
@@ -220,14 +167,12 @@
 				00000000000000000000010F /* QuotaColor.swift */,
 				000000000000000000000110 /* QuotaState.swift */,
 				000000000000000000000111 /* QuotaRepository.swift */,
+				000000000000000000000123 /* ProviderProfileStorage.swift */,
 				000000000000000000000104 /* QuotaStore.swift */,
+				000000000000000000000125 /* QuotaAccountsTransfer.swift */,
+				000000000000000000000128 /* QuotaRefreshModels.swift */,
 				000000000000000000000112 /* AppRoute.swift */,
 				000000000000000000000105 /* QuotaRingView.swift */,
-				000000000000000000000113 /* QuotaWidgetLayout.swift */,
-				000000000000000000000114 /* QuotaWidgetSurfaces.swift */,
-				000000000000000000000115 /* QuotaWidgetControls.swift */,
-				000000000000000000000116 /* QuotaWidgetContent.swift */,
-				000000000000000000000117 /* QuotaWidgetCard.swift */,
 			);
 			path = Shared;
 			sourceTree = "<group>";
@@ -237,6 +182,7 @@
 			children = (
 				00000000000000000000011F /* QuotaTransferTests.swift */,
 				000000000000000000000120 /* QuotaRefreshServiceTests.swift */,
+				000000000000000000000124 /* ProviderSessionIsolationTests.swift */,
 			);
 			path = BrimTests;
 			sourceTree = "<group>";
@@ -251,34 +197,15 @@
 				000000000000000000000901 /* Sources */,
 				000000000000000000000701 /* Frameworks */,
 				000000000000000000000902 /* Resources */,
-				000000000000000000000601 /* Embed App Extensions */,
 			);
 			buildRules = (
 			);
 			dependencies = (
-				000000000000000000000302 /* PBXTargetDependency */,
 			);
 			name = Brim;
 			productName = Brim;
 			productReference = 000000000000000000000200 /* Brim.app */;
 			productType = "com.apple.product-type.application";
-		};
-		000000000000000000000501 /* BrimWidget */ = {
-			isa = PBXNativeTarget;
-			buildConfigurationList = 000000000000000000000A01 /* Build configuration list for PBXNativeTarget "BrimWidget" */;
-			buildPhases = (
-				000000000000000000000903 /* Sources */,
-				000000000000000000000702 /* Frameworks */,
-				000000000000000000000904 /* Resources */,
-			);
-			buildRules = (
-			);
-			dependencies = (
-			);
-			name = BrimWidget;
-			productName = BrimWidget;
-			productReference = 000000000000000000000201 /* BrimWidget.appex */;
-			productType = "com.apple.product-type.app-extension";
 		};
 		000000000000000000000502 /* BrimTests */ = {
 			isa = PBXNativeTarget;
@@ -310,9 +237,6 @@
 					000000000000000000000500 = {
 						CreatedOnToolsVersion = 16.0;
 					};
-					000000000000000000000501 = {
-						CreatedOnToolsVersion = 16.0;
-					};
 					000000000000000000000502 = {
 						CreatedOnToolsVersion = 16.0;
 					};
@@ -332,7 +256,6 @@
 			projectRoot = "";
 			targets = (
 				000000000000000000000500 /* Brim */,
-				000000000000000000000501 /* BrimWidget */,
 				000000000000000000000502 /* BrimTests */,
 			);
 		};
@@ -347,14 +270,6 @@
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
-		000000000000000000000904 /* Resources */ = {
-			isa = PBXResourcesBuildPhase;
-			buildActionMask = 2147483647;
-			files = (
-				00000000000000000000000B /* Assets.xcassets in Resources */,
-			);
-			runOnlyForDeploymentPostprocessing = 0;
-		};
 /* End PBXResourcesBuildPhase section */
 
 /* Begin PBXSourcesBuildPhase section */
@@ -363,7 +278,11 @@
 			buildActionMask = 2147483647;
 			files = (
 				000000000000000000000001 /* BrimApp.swift in Sources */,
+				000000000000000000000038 /* BrimMenuBarController.swift in Sources */,
 				000000000000000000000002 /* AccountSettingsView.swift in Sources */,
+				000000000000000000000033 /* AccountSettingsAbout.swift in Sources */,
+				000000000000000000000034 /* BrimRefreshInterval.swift in Sources */,
+				000000000000000000000037 /* MenuBarSettingsView.swift in Sources */,
 				00000000000000000000002C /* FirstRunOnboardingView.swift in Sources */,
 				00000000000000000000002D /* AddAccountSheet.swift in Sources */,
 				000000000000000000000023 /* AccountSidebar.swift in Sources */,
@@ -379,36 +298,12 @@
 				000000000000000000000011 /* QuotaColor.swift in Sources */,
 				000000000000000000000013 /* QuotaState.swift in Sources */,
 				000000000000000000000015 /* QuotaRepository.swift in Sources */,
+				00000000000000000000002E /* ProviderProfileStorage.swift in Sources */,
 				000000000000000000000004 /* QuotaStore.swift in Sources */,
+				000000000000000000000031 /* QuotaAccountsTransfer.swift in Sources */,
+				000000000000000000000035 /* QuotaRefreshModels.swift in Sources */,
 				000000000000000000000017 /* AppRoute.swift in Sources */,
 				000000000000000000000005 /* QuotaRingView.swift in Sources */,
-				000000000000000000000019 /* QuotaWidgetLayout.swift in Sources */,
-				00000000000000000000001B /* QuotaWidgetSurfaces.swift in Sources */,
-				00000000000000000000001D /* QuotaWidgetControls.swift in Sources */,
-				00000000000000000000001F /* QuotaWidgetContent.swift in Sources */,
-				000000000000000000000021 /* QuotaWidgetCard.swift in Sources */,
-			);
-			runOnlyForDeploymentPostprocessing = 0;
-		};
-		000000000000000000000903 /* Sources */ = {
-			isa = PBXSourcesBuildPhase;
-			buildActionMask = 2147483647;
-			files = (
-				000000000000000000000007 /* BrimWidget.swift in Sources */,
-				000000000000000000000008 /* QuotaAccount.swift in Sources */,
-				00000000000000000000000E /* QuotaAccountDefaults.swift in Sources */,
-				000000000000000000000010 /* QuotaFormatting.swift in Sources */,
-				000000000000000000000012 /* QuotaColor.swift in Sources */,
-				000000000000000000000014 /* QuotaState.swift in Sources */,
-				000000000000000000000016 /* QuotaRepository.swift in Sources */,
-				000000000000000000000009 /* QuotaStore.swift in Sources */,
-				000000000000000000000018 /* AppRoute.swift in Sources */,
-				00000000000000000000000A /* QuotaRingView.swift in Sources */,
-				00000000000000000000001A /* QuotaWidgetLayout.swift in Sources */,
-				00000000000000000000001C /* QuotaWidgetSurfaces.swift in Sources */,
-				00000000000000000000001E /* QuotaWidgetControls.swift in Sources */,
-				000000000000000000000020 /* QuotaWidgetContent.swift in Sources */,
-				000000000000000000000022 /* QuotaWidgetCard.swift in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -418,17 +313,13 @@
 			files = (
 				00000000000000000000002A /* QuotaTransferTests.swift in Sources */,
 				00000000000000000000002B /* QuotaRefreshServiceTests.swift in Sources */,
+				000000000000000000000030 /* ProviderSessionIsolationTests.swift in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
 /* End PBXSourcesBuildPhase section */
 
 /* Begin PBXTargetDependency section */
-		000000000000000000000302 /* PBXTargetDependency */ = {
-			isa = PBXTargetDependency;
-			target = 000000000000000000000501 /* BrimWidget */;
-			targetProxy = 000000000000000000000301 /* PBXContainerItemProxy */;
-		};
 		000000000000000000000304 /* PBXTargetDependency */ = {
 			isa = PBXTargetDependency;
 			target = 000000000000000000000500 /* Brim */;
@@ -556,11 +447,12 @@
 			isa = XCBuildConfiguration;
 			buildSettings = {
 				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
-				CODE_SIGN_ENTITLEMENTS = Brim/App/Brim.entitlements;
-				CODE_SIGN_STYLE = Automatic;
+				CODE_SIGN_ENTITLEMENTS = Brim/App/BrimLocal.entitlements;
+				CODE_SIGN_IDENTITY = "-";
+				CODE_SIGN_STYLE = Manual;
 				COMBINE_HIDPI_IMAGES = YES;
 				CURRENT_PROJECT_VERSION = 1;
-				DEVELOPMENT_TEAM = 7SBNT5ZG4M;
+				DEVELOPMENT_TEAM = "";
 				ENABLE_HARDENED_RUNTIME = YES;
 				GENERATE_INFOPLIST_FILE = NO;
 				INFOPLIST_FILE = Brim/App/Info.plist;
@@ -572,6 +464,7 @@
 				MARKETING_VERSION = 1.0;
 				PRODUCT_BUNDLE_IDENTIFIER = dev.brim.app;
 				PRODUCT_NAME = "$(TARGET_NAME)";
+				SWIFT_ACTIVE_COMPILATION_CONDITIONS = "$(inherited) BRIM_CERTIFICATE_FREE_DEBUG";
 				SWIFT_EMIT_LOC_STRINGS = YES;
 				SWIFT_VERSION = 5.0;
 			};
@@ -602,61 +495,14 @@
 			};
 			name = Release;
 		};
-		000000000000000000000B04 /* Debug */ = {
-			isa = XCBuildConfiguration;
-			buildSettings = {
-				CODE_SIGN_ENTITLEMENTS = Brim/Widget/BrimWidget.entitlements;
-				CODE_SIGN_STYLE = Automatic;
-				CURRENT_PROJECT_VERSION = 1;
-				DEVELOPMENT_TEAM = 7SBNT5ZG4M;
-				GENERATE_INFOPLIST_FILE = NO;
-				INFOPLIST_FILE = Brim/Widget/Info.plist;
-				LD_RUNPATH_SEARCH_PATHS = (
-					"$(inherited)",
-					"@executable_path/../Frameworks",
-					"@executable_path/../../../../Frameworks",
-				);
-				MACOSX_DEPLOYMENT_TARGET = 14.0;
-				MARKETING_VERSION = 1.0;
-				PRODUCT_BUNDLE_IDENTIFIER = dev.brim.app.widget;
-				PRODUCT_NAME = "$(TARGET_NAME)";
-				SKIP_INSTALL = YES;
-				SWIFT_EMIT_LOC_STRINGS = YES;
-				SWIFT_VERSION = 5.0;
-			};
-			name = Debug;
-		};
-		000000000000000000000B05 /* Release */ = {
-			isa = XCBuildConfiguration;
-			buildSettings = {
-				CODE_SIGN_ENTITLEMENTS = Brim/Widget/BrimWidget.entitlements;
-				CODE_SIGN_STYLE = Automatic;
-				CURRENT_PROJECT_VERSION = 1;
-				DEVELOPMENT_TEAM = 7SBNT5ZG4M;
-				GENERATE_INFOPLIST_FILE = NO;
-				INFOPLIST_FILE = Brim/Widget/Info.plist;
-				LD_RUNPATH_SEARCH_PATHS = (
-					"$(inherited)",
-					"@executable_path/../Frameworks",
-					"@executable_path/../../../../Frameworks",
-				);
-				MACOSX_DEPLOYMENT_TARGET = 14.0;
-				MARKETING_VERSION = 1.0;
-				PRODUCT_BUNDLE_IDENTIFIER = dev.brim.app.widget;
-				PRODUCT_NAME = "$(TARGET_NAME)";
-				SKIP_INSTALL = YES;
-				SWIFT_EMIT_LOC_STRINGS = YES;
-				SWIFT_VERSION = 5.0;
-			};
-			name = Release;
-		};
 		000000000000000000000B06 /* Debug */ = {
 			isa = XCBuildConfiguration;
 			buildSettings = {
 				BUNDLE_LOADER = "$(TEST_HOST)";
-				CODE_SIGN_STYLE = Automatic;
+				CODE_SIGN_IDENTITY = "-";
+				CODE_SIGN_STYLE = Manual;
 				CURRENT_PROJECT_VERSION = 1;
-				DEVELOPMENT_TEAM = 7SBNT5ZG4M;
+				DEVELOPMENT_TEAM = "";
 				GENERATE_INFOPLIST_FILE = YES;
 				LD_RUNPATH_SEARCH_PATHS = (
 					"$(inherited)",
@@ -667,6 +513,7 @@
 				MARKETING_VERSION = 1.0;
 				PRODUCT_BUNDLE_IDENTIFIER = dev.brim.app.tests;
 				PRODUCT_NAME = "$(TARGET_NAME)";
+				SWIFT_ACTIVE_COMPILATION_CONDITIONS = "$(inherited) BRIM_CERTIFICATE_FREE_DEBUG";
 				SWIFT_VERSION = 5.0;
 				TEST_HOST = "$(BUILT_PRODUCTS_DIR)/Brim.app/Contents/MacOS/Brim";
 			};
@@ -702,15 +549,6 @@
 			buildConfigurations = (
 				000000000000000000000B02 /* Debug */,
 				000000000000000000000B03 /* Release */,
-			);
-			defaultConfigurationIsVisible = 0;
-			defaultConfigurationName = Release;
-		};
-		000000000000000000000A01 /* Build configuration list for PBXNativeTarget "BrimWidget" */ = {
-			isa = XCConfigurationList;
-			buildConfigurations = (
-				000000000000000000000B04 /* Debug */,
-				000000000000000000000B05 /* Release */,
 			);
 			defaultConfigurationIsVisible = 0;
 			defaultConfigurationName = Release;

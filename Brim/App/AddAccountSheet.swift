@@ -32,7 +32,7 @@ private extension QuotaProviderKind {
             return [
                 AddAccountCreationMode(
                     provider: self,
-                    connectionKind: .login,
+                    connectionKind: supportedConnectionKind,
                     title: "Codex",
                     subtitle: "Use Codex login",
                     detail: "Track the Codex session already signed in on this Mac.",
@@ -43,10 +43,10 @@ private extension QuotaProviderKind {
             return [
                 AddAccountCreationMode(
                     provider: self,
-                    connectionKind: .login,
+                    connectionKind: supportedConnectionKind,
                     title: "ChatGPT",
-                    subtitle: "Use ChatGPT login",
-                    detail: "Track your ChatGPT plan's rate-limit windows.",
+                    subtitle: "Open ChatGPT usage",
+                    detail: "Keep ChatGPT separate from Codex and verify plan usage in ChatGPT.",
                     fallbackSystemImage: "bubble.left.and.bubble.right.fill"
                 )
             ]
@@ -54,10 +54,10 @@ private extension QuotaProviderKind {
             return [
                 AddAccountCreationMode(
                     provider: self,
-                    connectionKind: .apiToken,
+                    connectionKind: .login,
                     title: "Claude",
-                    subtitle: "Use an Anthropic API key",
-                    detail: "Track Anthropic API rate limits with an sk-ant-… key.",
+                    subtitle: "Open Claude usage",
+                    detail: "View the shared Claude and Claude Code five-hour and weekly limits.",
                     fallbackSystemImage: "sparkle"
                 )
             ]
@@ -65,10 +65,10 @@ private extension QuotaProviderKind {
             return [
                 AddAccountCreationMode(
                     provider: self,
-                    connectionKind: .apiToken,
+                    connectionKind: supportedConnectionKind,
                     title: "Gemini",
                     subtitle: "Use a Google AI API key",
-                    detail: "Track a Google AI key (AIza…). Google exposes no live usage yet.",
+                    detail: "Track a Google AI Studio key. Google exposes no live usage yet.",
                     fallbackSystemImage: "diamond.fill"
                 )
             ]
@@ -182,6 +182,14 @@ private struct AddAccountOptionButton: View {
                         .foregroundStyle(accent)
                         .lineLimit(1)
                         .minimumScaleFactor(0.8)
+
+                    Text(mode.detail)
+                        .font(.system(size: 10, weight: .medium, design: .rounded))
+                        .foregroundStyle(.secondary)
+                        .multilineTextAlignment(.center)
+                        .lineLimit(2)
+                        .fixedSize(horizontal: false, vertical: true)
+                        .padding(.top, 4)
                 }
             }
             .frame(maxWidth: .infinity)
@@ -201,7 +209,7 @@ private struct AddAccountOptionButton: View {
             .contentShape(RoundedRectangle(cornerRadius: 14, style: .continuous))
         }
         .buttonStyle(.plain)
-        .help(mode.subtitle)
+        .help(mode.detail)
     }
 }
 

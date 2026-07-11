@@ -203,12 +203,9 @@ private final class OAuthCallbackServer: @unchecked Sendable {
     }
 
     private func waitForCallback() async throws -> CodexOAuthCallback {
-        lock.lock()
-        if let callbackResult {
-            lock.unlock()
+        if let callbackResult = lock.withLock({ callbackResult }) {
             return try callbackResult.get()
         }
-        lock.unlock()
 
         return try await withCheckedThrowingContinuation { continuation in
             lock.lock()
